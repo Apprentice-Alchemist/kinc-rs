@@ -1,3 +1,4 @@
 [submodule "Kinc"]
 	path = Kinc
 	url = https://github.com/Kode/Kinc
+	branch = main
