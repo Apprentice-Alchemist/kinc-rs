@@ -69,7 +69,7 @@ fn main() {
     println!("cargo:rerun-if-changed=kinc.h");
 
     let mut include_paths = vec!["Kinc/Sources"];
-    let mut defines = vec!["KINC_NO_MAIN"];
+    let mut defines = vec!["KINC_NO_MAIN", "KORE_LZ4X"];
     let mut libs = vec![];
     let mut files = vec![
         "Kinc/Sources/kinc/rootunit.c",
