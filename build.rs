@@ -86,6 +86,14 @@ fn main() {
         include_paths.push("Kinc/Backends/System/Windows/Sources");
         files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowsunit.c");
         files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowscppunit.cpp");
+        libs.extend([
+            "dxguid", "dsound", "dinput8", "ws2_32", "Winhttp", "wbemuuid",
+        ]);
+        defines.extend([
+            "_CRT_SECURE_NO_WARNINGS",
+            "_WINSOCK_DEPRECATED_NO_WARNINGS",
+            "KINC_NO_DIRECTSHOW",
+        ]);
     }
     if cfg!(target_vendor = "apple") {
         include_paths.push("Kinc/Backends/System/Apple/Sources");
@@ -181,24 +189,32 @@ fn main() {
         GraphicsApi::D3D11 => {
             include_paths.push("Kinc/Backends/Graphics4/Direct3D11/Sources");
             defines.push("KORE_D3D11");
+            defines.push("KORE_D3D");
             files.push("Kinc/Backends/Graphics4/Direct3D11/Sources/kinc/backend/compute.c");
             files.push(
                 "Kinc/Backends/Graphics4/Direct3D11/Sources/kinc/backend/graphics4/d3d11unit.c",
             );
+            libs.push("d3d11");
         }
         GraphicsApi::D3D12 => {
             include_paths.push("Kinc/Backends/Graphics5/Direct3D12/Sources");
             defines.push("KORE_D3D12");
+            defines.push("KORE_D3D");
             files.push(
                 "Kinc/Backends/Graphics5/Direct3D12/Sources/kinc/backend/graphics5/d3d12unit.c",
             );
+            libs.extend(["dxgi", "d3d12"]);
         }
         GraphicsApi::Metal => {
             include_paths.push("Kinc/Backends/Graphics5/Metal/Sources");
             defines.push("KORE_METAL");
             files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/compute.m");
             files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/graphics5/metalunit.m");
-            libs.extend(["framework=Metal"]);
+            libs.extend([
+                "framework=Metal",
+                #[cfg(target_os = "macos")]
+                "framework=MetalKit",
+            ]);
         }
     }
 
