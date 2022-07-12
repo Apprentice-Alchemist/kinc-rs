@@ -1,5 +1,7 @@
 mod sys;
 
+use std::ffi::CString;
+
 use crate::sys::*;
 
 bitflags::bitflags! {
@@ -147,16 +149,16 @@ impl FramebufferOptions {
     }
 }
 
-static mut RS_UPDATE_CALLBACK: Option<fn()> = None;
+static mut RS_UPDATE_CALLBACK: Option<fn(&Kinc)> = None;
 
 unsafe extern "C" fn _update_cb() {
     match RS_UPDATE_CALLBACK {
-        Some(cb) => cb(),
+        Some(cb) => cb(&Kinc {}),
         None => (),
     }
 }
 
-fn set_update_callback(callback: Option<fn()>) {
+fn set_update_callback(callback: Option<fn(&Kinc)>) {
     unsafe {
         RS_UPDATE_CALLBACK = callback;
         kinc_set_update_callback(Some(_update_cb));
@@ -169,7 +171,7 @@ pub struct KincBuilder<'a> {
     height: i32,
     window_options: Option<WindowOptions<'a>>,
     framebuffer_options: Option<FramebufferOptions>,
-    update_callback: Option<fn()>,
+    update_callback: Option<fn(&Kinc)>,
 }
 
 impl<'a> KincBuilder<'a> {
@@ -194,15 +196,16 @@ impl<'a> KincBuilder<'a> {
         self
     }
 
-    pub fn update_callback(mut self, callback: fn()) -> Self {
+    pub fn update_callback(mut self, callback: fn(&Kinc)) -> Self {
         self.update_callback = Some(callback);
         self
     }
 
-    pub fn build(self) -> Kinc {
+    pub fn build(self) -> (Kinc, Window) {
+        let name = CString::new(self.name).unwrap();
         unsafe {
             kinc_init(
-                self.name.as_ptr().cast(),
+                name.as_ptr(),
                 self.width,
                 self.height,
                 match self.window_options {
@@ -216,13 +219,17 @@ impl<'a> KincBuilder<'a> {
             );
         }
         set_update_callback(self.update_callback);
-        Kinc {}
+        (Kinc {}, Window { window: 0 })
     }
 }
 
 pub struct Kinc {}
 
 impl Kinc {
+    pub fn default_window(&self) -> Window {
+        Window { window: 0 }
+    }
+
     pub fn start(self) {
         unsafe {
             kinc_start();
@@ -230,21 +237,61 @@ impl Kinc {
     }
 }
 
+pub struct Window {
+    window: i32,
+}
+
+impl Window {
+    pub fn g4(&self) -> Graphics4 {
+        Graphics4 {
+            window: self.window,
+        }
+    }
+}
+
+bitflags::bitflags! {
+    pub struct ClearMode: u32 {
+        const COLOR = KINC_G4_CLEAR_COLOR as u32;
+        const DEPTH = KINC_G4_CLEAR_DEPTH as u32;
+        const STENCIL = KINC_G4_CLEAR_STENCIL as u32;
+        const ALL = Self::COLOR.bits | Self::DEPTH.bits | Self::STENCIL.bits;
+    }
+}
+
+pub struct Graphics4 {
+    window: i32,
+}
+
+impl Graphics4 {
+    pub fn begin(&self) {
+        unsafe {
+            kinc_g4_begin(self.window);
+        }
+    }
+
+    pub fn clear(&self, flags: ClearMode, color: u32, depth: f32, stencil: i32) {
+        unsafe {
+            kinc_g4_clear(flags.bits(), color, depth, stencil);
+        }
+    }
+
+    pub fn end(&self) {
+        unsafe {
+            kinc_g4_begin(self.window);
+        }
+    }
+}
+
 pub mod g4 {
     use crate::sys::*;
-    pub fn begin() {
-        unsafe {
-            kinc_g4_begin(0);
-        }
-    }
 
-    pub fn end() {
+    pub fn swap_buffers() -> Result<(), ()> {
         unsafe {
-            kinc_g4_begin(0);
+            if kinc_g4_swap_buffers() {
+                Ok(())
+            } else {
+                Err(())
+            }
         }
-    }
-
-    pub fn swap_buffers() -> bool {
-        unsafe { kinc_g4_swap_buffers() }
     }
 }

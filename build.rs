@@ -229,6 +229,7 @@ fn main() {
                     libs.push("opengl32");
                 }
                 TargetOS::Linux => {
+                    defines.push("KINC_EGL");
                     libs.extend(["GL", "EGL"]);
                 }
                 TargetOS::MacOS => {
