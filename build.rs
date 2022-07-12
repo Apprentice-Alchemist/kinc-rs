@@ -1,9 +1,10 @@
-extern crate bindgen;
+#![allow(clippy::upper_case_acronyms)]
 
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 enum GraphicsApi {
     OpenGL,
     Vulkan,
@@ -12,30 +13,42 @@ enum GraphicsApi {
     Metal,
 }
 
-impl GraphicsApi {
-    pub fn is_g4(&self) -> bool {
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+enum TargetOS {
+    Windows,
+    Linux,
+    MacOS,
+    IOS,
+    TVOS,
+    Android,
+    Web,
+}
+
+impl Display for TargetOS {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::OpenGL | Self::D3D11 => true,
-            _ => false,
+            TargetOS::Windows => write!(f, "windows"),
+            TargetOS::Linux => write!(f, "linux"),
+            TargetOS::MacOS => write!(f, "macos"),
+            TargetOS::IOS => write!(f, "ios"),
+            TargetOS::TVOS => write!(f, "tvos"),
+            TargetOS::Android => write!(f, "android"),
+            TargetOS::Web => write!(f, "web"),
         }
     }
+}
 
-    pub fn is_supported(&self) -> bool {
+impl GraphicsApi {
+    pub fn is_g4(&self) -> bool {
+        matches!(self, Self::OpenGL | Self::D3D11)
+    }
+
+    pub fn is_supported(&self, os: TargetOS) -> bool {
         match self {
-            Self::OpenGL => {
-                cfg!(target_os = "linux")
-                    || cfg!(target_os = "macos")
-                    || cfg!(target_os = "windows")
-                    || cfg!(target_os = "android")
-                    || cfg!(target_os = "ios")
-            }
-            Self::Vulkan => {
-                cfg!(target_os = "linux")
-                    || cfg!(target_os = "windows")
-                    || cfg!(target_os = "android")
-            }
-            Self::D3D11 | Self::D3D12 => cfg!(target_os = "windows"),
-            Self::Metal => cfg!(target_os = "macos") || cfg!(target_os = "ios"),
+            Self::OpenGL => true, // currently OpenGL is always supported,
+            Self::Vulkan => matches!(os, TargetOS::Windows | TargetOS::Linux | TargetOS::Android),
+            Self::D3D11 | Self::D3D12 => os == TargetOS::Windows,
+            Self::Metal => matches!(os, TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS)
         }
     }
 }
@@ -70,79 +83,125 @@ fn main() {
         "Kinc/Sources/kinc/network/networkunit.c",
     ];
 
-    if cfg!(unix) {
+    let target_os = match env::var("CARGO_CFG_TARGET_OS")
+        .unwrap()
+        .split('-')
+        .next()
+        .unwrap()
+    {
+        "windows" => TargetOS::Windows,
+        "linux" => TargetOS::Linux,
+        "macos" => TargetOS::MacOS,
+        "ios" => TargetOS::IOS,
+        "tvos" => TargetOS::TVOS,
+        "android" => TargetOS::Android,
+        "web" => TargetOS::Web,
+        os => panic!("Unknown target OS: {}", os),
+    };
+
+    if env::var("CARGO_CFG_UNIX").is_ok() {
         include_paths.push("Kinc/Backends/System/POSIX/Sources");
         files.push("Kinc/Backends/System/POSIX/Sources/kinc/backend/posixunit.c");
     }
-    if cfg!(target_os = "linux") {
-        include_paths.push("Kinc/Backends/System/Linux/Sources");
-        defines.push("KINC_NO_WAYLAND");
-        files.push("Kinc/Backends/System/Linux/Sources/kinc/backend/linuxunit.c");
-        libs.extend(["asound", "dl", "udev"]);
-    }
-    if cfg!(windows) {
-        include_paths.push("Kinc/Backends/System/Microsoft/Sources");
-        files.push("Kinc/Backends/System/Microsoft/Sources/kinc/backend/microsoftunit.c");
-        include_paths.push("Kinc/Backends/System/Windows/Sources");
-        files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowsunit.c");
-        files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowscppunit.cpp");
-        libs.extend([
-            "dxguid", "dsound", "dinput8", "ws2_32", "Winhttp", "wbemuuid",
-        ]);
-        defines.extend([
-            "_CRT_SECURE_NO_WARNINGS",
-            "_WINSOCK_DEPRECATED_NO_WARNINGS",
-            "KINC_NO_DIRECTSHOW",
-        ]);
-    }
-    if cfg!(target_vendor = "apple") {
-        include_paths.push("Kinc/Backends/System/Apple/Sources");
-        files.push("Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m");
-    }
-    if cfg!(target_os = "macos") {
-        include_paths.push("Kinc/Backends/System/MacOS/Sources");
-        files.push("Kinc/Backends/System/macOS/Sources/kinc/backend/macosunit.m");
-        libs.push("framework=IOKit");
-        libs.push("framework=Cocoa");
-        libs.push("framework=AppKit");
-        libs.push("framework=CoreAudio");
-        libs.push("framework=CoreData");
-        libs.push("framework=CoreMedia");
-        libs.push("framework=CoreVideo");
-        libs.push("framework=AVFoundation");
-        libs.push("framework=Foundation");
-    }
-    if cfg!(target_os = "ios") {
-        include_paths.push("Kinc/Backends/System/iOS/Sources");
-        files.push("Kinc/Backends/System/iOS/Sources/kinc/backend/iosunit.m");
+
+    match target_os {
+        TargetOS::Windows => {
+            include_paths.push("Kinc/Backends/System/Microsoft/Sources");
+            files.push("Kinc/Backends/System/Microsoft/Sources/kinc/backend/microsoftunit.c");
+            include_paths.push("Kinc/Backends/System/Windows/Sources");
+            files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowsunit.c");
+            files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowscppunit.cpp");
+            libs.extend([
+                "dxguid", "dsound", "dinput8", "ws2_32", "Winhttp", "wbemuuid", "kernel32",
+                "user32", "gdi32", "comdlg32", "advapi32", "shell32", "ole32", "oleaut32", "uuid",
+                "odbc32", "odbccp32",
+            ]);
+            defines.extend([
+                "_CRT_SECURE_NO_WARNINGS",
+                "_WINSOCK_DEPRECATED_NO_WARNINGS",
+                "KINC_NO_DIRECTSHOW",
+            ]);
+
+            files.push("Kinc/Backends/Audio2/WASAPI/Sources/kinc/backend/wasapi.c");
+        }
+        TargetOS::Linux => {
+            include_paths.push("Kinc/Backends/System/Linux/Sources");
+            defines.push("KINC_NO_WAYLAND");
+            files.push("Kinc/Backends/System/Linux/Sources/kinc/backend/linuxunit.c");
+            libs.extend(["asound", "dl", "udev"]);
+        }
+        TargetOS::MacOS => {
+            include_paths.push("Kinc/Backends/System/Apple/Sources");
+            files.push("Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m");
+            include_paths.push("Kinc/Backends/System/MacOS/Sources");
+            files.push("Kinc/Backends/System/macOS/Sources/kinc/backend/macosunit.m");
+            libs.push("framework=IOKit");
+            libs.push("framework=Cocoa");
+            libs.push("framework=AppKit");
+            libs.push("framework=CoreAudio");
+            libs.push("framework=CoreData");
+            libs.push("framework=CoreMedia");
+            libs.push("framework=CoreVideo");
+            libs.push("framework=AVFoundation");
+            libs.push("framework=Foundation");
+        }
+        TargetOS::IOS | TargetOS::TVOS => {
+            include_paths.push("Kinc/Backends/System/Apple/Sources");
+            files.push("Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m");
+            if target_os == TargetOS::TVOS {
+                defines.push("KORE_TVOS");
+            }
+            include_paths.push("Kinc/Backends/System/iOS/Sources");
+            files.push("Kinc/Backends/System/iOS/Sources/kinc/backend/iosunit.m");
+            libs.push("framework=UIKit");
+            libs.push("framework=Foundation");
+            libs.push("framework=CoreGraphics");
+            libs.push("framework=QuartzCore");
+            libs.push("framework=CoreAudio");
+            libs.push("framework=AudioToolbox");
+            libs.push("framework=CoreMotion");
+            libs.push("framework=AVFoundation");
+            libs.push("framework=CoreFoundation");
+            libs.push("framework=CoreVideo");
+            libs.push("framework=CoreMedia");
+        }
+        TargetOS::Android => {
+            include_paths.push("Kinc/Backends/System/Android/Sources");
+            files.push("Kinc/Backends/System/Android/Sources/kinc/backend/androidunit.c");
+            libs.push("log");
+            libs.push("android");
+            libs.push("EGL");
+            libs.push("GLESv2");
+            libs.push("OpenSLES");
+            libs.push("OpenMAXAL");
+        }
+        TargetOS::Web => {
+            defines.push("KORE_HTML5");
+            include_paths.push("Kinc/Backends/System/HTML5/Sources");
+            files.push("Kinc/Backends/System/Web/Sources/kinc/backend/webunit.c");
+        }
     }
 
-    let default_graphics = if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
-        GraphicsApi::Metal
-    } else if cfg!(target_os = "windows") {
-        GraphicsApi::D3D11
-    } else {
+    let graphics = if env::var("CARGO_FEATURE_opengl").is_ok() {
         GraphicsApi::OpenGL
-    };
-
-    let graphics = if cfg!(feature = "opengl") {
-        Some(GraphicsApi::OpenGL)
-    } else if cfg!(feature = "vulkan") {
-        Some(GraphicsApi::Vulkan)
-    } else if cfg!(feature = "d3d11") {
-        Some(GraphicsApi::D3D11)
-    } else if cfg!(feature = "d3d12") {
-        Some(GraphicsApi::D3D12)
-    } else if cfg!(feature = "metal") {
-        Some(GraphicsApi::Metal)
+    } else if env::var("CARGO_FEATURE_vulkan").is_ok() {
+        GraphicsApi::Vulkan
+    } else if env::var("CARGO_FEATURE_d3d11").is_ok() {
+        GraphicsApi::D3D11
+    } else if env::var("CARGO_FEATURE_d3d12").is_ok() {
+        GraphicsApi::D3D12
+    } else if env::var("CARGO_FEATURE_metal").is_ok() {
+        GraphicsApi::Metal
     } else {
-        None
+        match target_os {
+            TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS => GraphicsApi::Metal,
+            TargetOS::Windows => GraphicsApi::D3D11,
+            TargetOS::Android | TargetOS::Linux | TargetOS::Web => GraphicsApi::OpenGL,
+        }
     };
 
-    let graphics = graphics.unwrap_or(default_graphics);
-
-    if !graphics.is_supported() {
-        panic!("{} is not supported on this target", graphics);
+    if !graphics.is_supported(target_os) {
+        panic!("{} is not supported on {}", graphics, target_os);
     }
 
     if graphics.is_g4() {
@@ -163,19 +222,30 @@ fn main() {
             defines.push("KORE_OPENGL");
             files
                 .push("Kinc/Backends/Graphics4/OpenGL/Sources/kinc/backend/graphics4/openglunit.c");
-            if cfg!(windows) {
-                defines.push("GLEW_STATIC");
-                files.push("Kinc/Backends/Graphics4/OpenGL/Sources/GL/glew.c");
-            }
-            if cfg!(target_os = "macos") {
-                libs.push("framework=OpenGL");
-            }
-            if cfg!(target_os = "linux") || cfg!(target_os = "android") {
-                defines.push("KINC_EGL");
-                libs.extend(["GL", "EGL"]);
-            }
-            if cfg!(target_os = "android") || cfg!(target_os = "android") {
-                defines.push("KORE_OPENGL_ES");
+            match target_os {
+                TargetOS::Windows => {
+                    defines.push("GLEW_STATIC");
+                    files.push("Kinc/Backends/Graphics4/OpenGL/Sources/GL/glew.c");
+                    libs.push("opengl32");
+                }
+                TargetOS::Linux => {
+                    libs.extend(["GL", "EGL"]);
+                }
+                TargetOS::MacOS => {
+                    libs.push("OpenGL");
+                }
+                TargetOS::IOS | TargetOS::TVOS => {
+                    defines.push("KORE_OPENGL_ES");
+                    libs.push("OpenGLES");
+                }
+                TargetOS::Android => {
+                    defines.push("KINC_EGL");
+                    defines.push("KORE_OPENGL_ES");
+                    libs.push("GLESv2");
+                }
+                TargetOS::Web => {
+                    defines.push("KORE_OPENGL_ES");
+                }
             }
         }
         GraphicsApi::Vulkan => {
@@ -185,6 +255,9 @@ fn main() {
             files
                 .push("Kinc/Backends/Graphics5/Vulkan/Sources/kinc/backend/graphics5/vulkanunit.c");
             libs.push("vulkan");
+            if target_os == TargetOS::Android {
+                defines.push("VK_USE_PLATFORM_ANDROID_KHR");
+            }
         }
         GraphicsApi::D3D11 => {
             include_paths.push("Kinc/Backends/Graphics4/Direct3D11/Sources");
@@ -210,16 +283,12 @@ fn main() {
             defines.push("KORE_METAL");
             files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/compute.m");
             files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/graphics5/metalunit.m");
-            libs.extend([
-                "framework=Metal",
-                #[cfg(target_os = "macos")]
-                "framework=MetalKit",
-            ]);
+            libs.push("framework=Metal");
+            if target_os == TargetOS::MacOS {
+                libs.push("framework=MetalKit");
+            }
         }
     }
-
-    dbg!(include_paths.clone());
-    dbg!(defines.clone());
 
     let bindings = bindgen::Builder::default()
         .header("kinc.h")
@@ -249,11 +318,17 @@ fn main() {
     for define in defines {
         builder.define(define, None);
     }
+    if target_os == TargetOS::Android {
+        if graphics == GraphicsApi::Vulkan {
+            builder.define("KORE_ANDROID_API", "24");
+        } else {
+            builder.define("KORE_ANDROID_API", "19");
+        }
+    }
     builder.includes(include_paths);
     builder.extra_warnings(false);
     builder.cargo_metadata(true);
     builder.warnings(false);
     builder.flag_if_supported("-Wno-attributes");
-    // builder.cpp(true);
     builder.compile("kinc");
 }
