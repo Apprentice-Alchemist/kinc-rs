@@ -1,4 +1,4 @@
-use kinc::{Kinc, ClearMode};
+use kinc::{ClearMode, Kinc};
 
 fn update(kinc: &Kinc) {
     let g4 = kinc.default_window().g4();
@@ -13,7 +13,9 @@ fn update(kinc: &Kinc) {
 }
 
 fn main() {
-    let (kinc, _) = kinc::KincBuilder::new("Kinc + Rust", 500, 500).update_callback(update).build();
+    let (kinc, _) = kinc::KincBuilder::new("Kinc + Rust", 500, 500)
+        .update_callback(update)
+        .build();
 
     kinc.start();
 }

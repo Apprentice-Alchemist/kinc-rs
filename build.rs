@@ -48,7 +48,7 @@ impl GraphicsApi {
             Self::OpenGL => true, // currently OpenGL is always supported,
             Self::Vulkan => matches!(os, TargetOS::Windows | TargetOS::Linux | TargetOS::Android),
             Self::D3D11 | Self::D3D12 => os == TargetOS::Windows,
-            Self::Metal => matches!(os, TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS)
+            Self::Metal => matches!(os, TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS),
         }
     }
 }
