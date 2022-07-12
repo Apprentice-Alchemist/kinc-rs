@@ -17,6 +17,8 @@ impl Default for WindowFeatures {
         WindowFeatures::RESIZEABLE | WindowFeatures::MINIMIZABLE | WindowFeatures::MAXIMIZABLE
     }
 }
+
+#[derive(Clone, Copy, Debug)]
 pub enum WindowMode {
     Window,
     Fullscreen,
@@ -29,21 +31,80 @@ impl Default for WindowMode {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone, Debug)]
 pub struct WindowOptions<'a> {
-    pub title: &'a str,
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-    pub display_index: i32,
-    pub visible: bool,
-    pub window_features: WindowFeatures,
-    pub mode: WindowMode,
+    title: &'a str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    display_index: i32,
+    visible: bool,
+    window_features: WindowFeatures,
+    mode: WindowMode,
 }
 
 impl<'a> WindowOptions<'a> {
-    fn into_raw(&self) -> kinc_window_options {
+    pub fn new() -> Self {
+        Self {
+            title: "",
+            x: 0,
+            y: 0,
+            width: 500,
+            height: 500,
+            display_index: 0,
+            visible: true,
+            window_features: Default::default(),
+            mode: Default::default(),
+        }
+    }
+
+    pub fn title(mut self, title: &'a str) -> Self {
+        self.title = title;
+        self
+    }
+
+    pub fn x(mut self, x: i32) -> Self {
+        self.x = x;
+        self
+    }
+
+    pub fn y(mut self, y: i32) -> Self {
+        self.y = y;
+        self
+    }
+
+    pub fn width(mut self, width: i32) -> Self {
+        self.width = width;
+        self
+    }
+
+    pub fn height(mut self, height: i32) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub fn display_index(mut self, display_index: i32) -> Self {
+        self.display_index = display_index;
+        self
+    }
+
+    pub fn visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    pub fn window_features(mut self, window_features: WindowFeatures) -> Self {
+        self.window_features = window_features;
+        self
+    }
+
+    pub fn mode(mut self, mode: WindowMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    fn into_raw(self) -> kinc_window_options {
         kinc_window_options {
             title: self.title.as_ptr() as *const ::std::os::raw::c_char,
             x: self.x,
@@ -74,7 +135,7 @@ pub struct FramebufferOptions {
 }
 
 impl FramebufferOptions {
-    fn into_raw(&self) -> kinc_framebuffer_options {
+    fn into_raw(self) -> kinc_framebuffer_options {
         kinc_framebuffer_options {
             frequency: self.frequency,
             vertical_sync: self.vertical_sync,
@@ -90,47 +151,82 @@ static mut RS_UPDATE_CALLBACK: Option<fn()> = None;
 
 unsafe extern "C" fn _update_cb() {
     match RS_UPDATE_CALLBACK {
-        None => {}
         Some(cb) => cb(),
+        None => (),
     }
 }
 
-pub fn set_update_callback(callback: fn()) {
+fn set_update_callback(callback: Option<fn()>) {
     unsafe {
-        RS_UPDATE_CALLBACK = Some(callback);
-    }
-    unsafe {
+        RS_UPDATE_CALLBACK = callback;
         kinc_set_update_callback(Some(_update_cb));
     }
 }
 
-pub fn init(
-    name: &str,
+pub struct KincBuilder<'a> {
+    name: &'a str,
     width: i32,
     height: i32,
-    win: Option<WindowOptions>,
-    frame: Option<FramebufferOptions>,
-) {
-    unsafe {
-        kinc_init(
-            name.as_bytes().as_ptr() as *const ::std::os::raw::c_char,
+    window_options: Option<WindowOptions<'a>>,
+    framebuffer_options: Option<FramebufferOptions>,
+    update_callback: Option<fn()>,
+}
+
+impl<'a> KincBuilder<'a> {
+    pub fn new(name: &'a str, width: i32, height: i32) -> Self {
+        Self {
+            name,
             width,
             height,
-            match win {
-                None => std::ptr::null_mut(),
-                Some(options) => &mut options.into_raw() as *mut kinc_window_options,
-            },
-            match frame {
-                None => std::ptr::null_mut(),
-                Some(options) => &mut options.into_raw() as *mut kinc_framebuffer_options,
-            },
-        );
+            window_options: None,
+            framebuffer_options: None,
+            update_callback: None,
+        }
+    }
+
+    pub fn window_options(mut self, window_options: WindowOptions<'a>) -> Self {
+        self.window_options = Some(window_options);
+        self
+    }
+
+    pub fn framebuffer_options(mut self, framebuffer_options: FramebufferOptions) -> Self {
+        self.framebuffer_options = Some(framebuffer_options);
+        self
+    }
+
+    pub fn update_callback(mut self, callback: fn()) -> Self {
+        self.update_callback = Some(callback);
+        self
+    }
+
+    pub fn build(self) -> Kinc {
+        unsafe {
+            kinc_init(
+                self.name.as_ptr().cast(),
+                self.width,
+                self.height,
+                match self.window_options {
+                    None => std::ptr::null_mut(),
+                    Some(options) => &mut options.into_raw() as *mut kinc_window_options,
+                },
+                match self.framebuffer_options {
+                    None => std::ptr::null_mut(),
+                    Some(options) => &mut options.into_raw() as *mut kinc_framebuffer_options,
+                },
+            );
+        }
+        set_update_callback(self.update_callback);
+        Kinc {}
     }
 }
 
-pub fn start() {
-    unsafe {
-        kinc_start();
+pub struct Kinc {}
+
+impl Kinc {
+    pub fn start(self) {
+        unsafe {
+            kinc_start();
+        }
     }
 }
 

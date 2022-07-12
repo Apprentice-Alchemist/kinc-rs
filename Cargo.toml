@@ -16,3 +16,7 @@ opengl = []
 metal = []
 d3d11 = []
 d3d12 = []
+
+[lib]
+[[example]]
+name = "shader"
