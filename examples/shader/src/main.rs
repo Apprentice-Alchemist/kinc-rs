@@ -6,6 +6,8 @@ use kinc::{
     Kinc, KincApp,
 };
 
+use krafix::shader;
+
 struct Shader {
     // vertex_structure: &'static VertexStructure,
     // pipeline: Pipeline,
@@ -30,8 +32,9 @@ impl<'a> KincApp for Shader {
 
 fn main() {
     let (kinc, _) = kinc::KincBuilder::new("Kinc + Rust", 500, 500).build();
+    let vertex_shader = shader!(vertex: r#"""
+    """#);
     // let fragment_shader;
-    // let vertex_shader;
     // let pipeline = PipelineBuilder::new(vertex_shader, fragment_shader).build();
     let vertex_structure = VertexStructureBuilder::new()
         .add("pos", kinc::g4::VertexData::F32_3X)

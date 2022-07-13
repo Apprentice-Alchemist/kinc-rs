@@ -1,2 +1,2 @@
 [workspace]
-members = ["kinc", "examples/shader"]
+members = ["kinc", "krafix", "examples/shader"]
