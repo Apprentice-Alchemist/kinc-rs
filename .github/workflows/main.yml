@@ -54,7 +54,7 @@ jobs:
       - name: Get Kinc Tools
         run: |
           git submodule update --init
-          Kinc/get_dlc
+          kinc/Kinc/get_dlc
 
       - name: Get LunarG package list.
         if: matrix.graphics == 'vulkan'
