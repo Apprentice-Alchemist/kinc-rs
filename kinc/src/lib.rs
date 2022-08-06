@@ -1,6 +1,6 @@
 #![warn(clippy::missing_safety_doc)]
-mod sys;
 pub mod g4;
+mod sys;
 
 use std::{borrow::BorrowMut, cell::RefCell, ffi::CString};
 
@@ -17,7 +17,7 @@ where
     T: GetRaw<N>,
 {
     fn get_raw(&self) -> *mut N {
-        match *self {
+        match self {
             Some(x) => x.get_raw(),
             None => std::ptr::null_mut(),
         }
@@ -181,7 +181,7 @@ static STATIC_DATA: StaticData = StaticData::new();
 #[derive(Default)]
 struct StaticData {
     kinc: RefCell<Option<Box<Kinc>>>,
-    app: RefCell<Option<Box<dyn KincApp>>>,
+    app: RefCell<Option<Box<dyn Callbacks>>>,
 }
 
 impl StaticData {
@@ -193,7 +193,7 @@ impl StaticData {
     }
     /// # Safety
     /// This function should be called from the same thread as [`StaticData::with()`] will be called from.
-    unsafe fn init(&'static self, data: Kinc, app: impl KincApp + 'static) {
+    unsafe fn init(&'static self, data: Kinc, app: impl Callbacks + 'static) {
         self.kinc.replace(Some(Box::new(data)));
         self.app.replace(Some(Box::new(app)));
     }
@@ -201,7 +201,7 @@ impl StaticData {
     /// # Safety
     /// This function must be called *after* `init` has been called
     /// It should also always be called from the same thread.
-    unsafe fn with(&'static self, f: impl FnOnce(&mut Kinc, &mut (dyn KincApp + 'static))) {
+    unsafe fn with(&'static self, f: impl FnOnce(&mut Kinc, &mut (dyn Callbacks + 'static))) {
         if let Some(kinc) = self.kinc.borrow_mut().as_mut() {
             let mut app = self.app.borrow_mut();
             if let Some(app) = app.as_mut() {
@@ -218,8 +218,8 @@ extern "C" fn _update_cb() {
     // The update callback won't be called before `kinc_start` has been called
     // which only happens after `STATIC_DATA.init` has been called.
     unsafe {
-        STATIC_DATA.with(|data, app| {
-            app.update(data);
+        STATIC_DATA.with(|data, callbacks| {
+            callbacks.update(data);
         });
     }
 }
@@ -293,10 +293,10 @@ impl Kinc {
         Graphics4
     }
 
-    pub fn start(self, app: impl KincApp + 'static) {
+    pub fn start(self, callbacks: impl Callbacks + 'static) {
         // Safety: the update callbacks that use `STATIC_DATA` will always be called from the same thread as `kinc_start`.
         unsafe {
-            STATIC_DATA.init(self, app);
+            STATIC_DATA.init(self, callbacks);
             kinc_set_update_callback(Some(_update_cb));
             kinc_start();
         }
@@ -309,6 +309,6 @@ pub struct Window {
 
 impl Window {}
 
-pub trait KincApp {
+pub trait Callbacks {
     fn update(&mut self, _kinc: &mut Kinc) {}
 }

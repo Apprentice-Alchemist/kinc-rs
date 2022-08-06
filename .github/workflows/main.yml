@@ -73,4 +73,4 @@ jobs:
         run: sudo apt-get install vulkan-sdk
 
       - run: |
-          cargo build --example shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}
+          cargo build -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}

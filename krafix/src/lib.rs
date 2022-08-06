@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
-use syn::{parse_macro_input, Expr, Ident, Token, Type, Visibility, LitStr};
+use syn::{parse_macro_input, Expr, Ident, LitStr, Token, Type, Visibility};
 
 enum ShaderKind {
     Vertex,
@@ -46,5 +46,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     quote! {
         ()
-    }.into()
+    }
+    .into()
 }

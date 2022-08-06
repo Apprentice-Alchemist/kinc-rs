@@ -7,7 +7,7 @@ bitflags::bitflags! {
     }
 }
 use std::{
-    ffi::CString,
+    ffi::{c_void, CString},
     ops::{Deref, DerefMut},
 };
 
@@ -19,14 +19,17 @@ pub struct RenderPass<'a> {
 
 impl<'a> RenderPass<'a> {
     pub fn set_index_buffer(&mut self, index_buffer: &IndexBuffer) {
+        // Safety: index_buffer is a valid index buffer.
         unsafe { kinc_g4_set_index_buffer(index_buffer.get_raw()) }
     }
 
     pub fn set_vertex_buffer(&mut self, vertex_buffer: &VertexBuffer) {
+        // Safety: vertex_buffer is a valid vertex buffer.
         unsafe { kinc_g4_set_vertex_buffer(vertex_buffer.get_raw()) }
     }
 
     pub fn set_pipeline(&mut self, pipeline: &Pipeline) {
+        // Safety: pipeline is a valid pipeline.
         unsafe { kinc_g4_set_pipeline(pipeline.get_raw()) }
     }
 
@@ -97,9 +100,9 @@ pub enum Usage {
 impl IntoRaw<kinc_g4_usage_t> for Usage {
     fn into_raw(self) -> kinc_g4_usage_t {
         match self {
-            Static => kinc_g4_usage_KINC_G4_USAGE_STATIC,
-            Dynamic => kinc_g4_usage_KINC_G4_USAGE_DYNAMIC,
-            Readeable => kinc_g4_usage_KINC_G4_USAGE_READABLE,
+            Self::Static => kinc_g4_usage_KINC_G4_USAGE_STATIC,
+            Self::Dynamic => kinc_g4_usage_KINC_G4_USAGE_DYNAMIC,
+            Self::Readable => kinc_g4_usage_KINC_G4_USAGE_READABLE,
         }
     }
 }
@@ -219,7 +222,7 @@ pub struct VertexStructure {
 
 impl VertexStructure {
     pub fn size(&self) -> i32 {
-        return self.vertex_structure.size;
+        self.vertex_structure.size
     }
 }
 
@@ -263,7 +266,7 @@ impl<T> DerefMut for VertexLockResult<'_, T> {
         unsafe {
             std::slice::from_raw_parts_mut(
                 self.data,
-                (self.count * self.vertex_buffer.stride()) as usize,
+                (self.count * self.vertex_buffer.stride()) as usize / std::mem::size_of::<T>(),
             )
         }
     }
@@ -354,12 +357,7 @@ pub struct IndexLockResult<'a, T: ValidIndexFormat> {
 impl<T: ValidIndexFormat> Deref for IndexLockResult<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.data,
-                self.count as usize,
-            )
-        }
+        unsafe { std::slice::from_raw_parts(self.data, self.count as usize) }
     }
 }
 
@@ -441,13 +439,92 @@ impl GetRaw<kinc_g4_texture> for Texture {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum ShaderType {
+    Vertex,
+    Fragment,
+    Geometry,
+    TessellationControl,
+    TessellationEvaluation,
+}
+
+impl IntoRaw<kinc_g4_shader_type_t> for ShaderType {
+    fn into_raw(self) -> kinc_g4_shader_type_t {
+        match self {
+            ShaderType::Vertex => kinc_g4_shader_type_KINC_G4_SHADER_TYPE_VERTEX,
+            ShaderType::Fragment => kinc_g4_shader_type_KINC_G4_SHADER_TYPE_FRAGMENT,
+            ShaderType::Geometry => kinc_g4_shader_type_KINC_G4_SHADER_TYPE_GEOMETRY,
+            ShaderType::TessellationControl => {
+                kinc_g4_shader_type_KINC_G4_SHADER_TYPE_TESSELLATION_CONTROL
+            }
+            ShaderType::TessellationEvaluation => {
+                kinc_g4_shader_type_KINC_G4_SHADER_TYPE_TESSELLATION_EVALUATION
+            }
+        }
+    }
+}
+
 pub struct Shader {
     shader: kinc_g4_shader_t,
+}
+
+impl Shader {
+    pub fn new(code: &[u8], t: ShaderType) -> Self {
+        unsafe {
+            let mut shader: kinc_g4_shader_t = std::mem::zeroed();
+            kinc_g4_shader_init(
+                &mut shader as *mut _,
+                code.as_ptr().cast::<c_void>() as *mut _,
+                code.len().try_into().unwrap(),
+                t.into_raw(),
+            );
+            Self { shader }
+        }
+    }
 }
 
 impl GetRaw<kinc_g4_shader_t> for Shader {
     fn get_raw(&self) -> *mut kinc_g4_shader_t {
         &self.shader as *const kinc_g4_shader_t as *mut kinc_g4_shader_t
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RenderTargetFormat {
+    I32,
+    F64,
+    I32Red,
+    F128,
+    I16Depth,
+    I8Red,
+    F16Red,
+}
+
+impl IntoRaw<kinc_g4_render_target_format_t> for RenderTargetFormat {
+    fn into_raw(self) -> kinc_g4_render_target_format_t {
+        match self {
+            RenderTargetFormat::I32 => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_32BIT
+            }
+            RenderTargetFormat::F64 => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_64BIT_FLOAT
+            }
+            RenderTargetFormat::I32Red => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_32BIT_RED_FLOAT
+            }
+            RenderTargetFormat::F128 => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_128BIT_FLOAT
+            }
+            RenderTargetFormat::I16Depth => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_16BIT_DEPTH
+            }
+            RenderTargetFormat::I8Red => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_8BIT_RED
+            }
+            RenderTargetFormat::F16Red => {
+                kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_16BIT_RED_FLOAT
+            }
+        }
     }
 }
 
@@ -589,11 +666,46 @@ impl GetRaw<kinc_g4_pipeline> for Pipeline {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Stencil {
     pub mode: CompareMode,
     pub both_pass: StencilAction,
     pub depth_fail: StencilAction,
     pub fail: StencilAction,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Blending {
+    pub source: BlendingFactor,
+    pub destination: BlendingFactor,
+    pub operation: BlendingOperation,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ColorAttachment {
+    pub write_red: bool,
+    pub write_green: bool,
+    pub write_blue: bool,
+    pub write_alpha: bool,
+    pub format: RenderTargetFormat,
+}
+
+impl ColorAttachment {
+    const fn default() -> Self {
+        ColorAttachment {
+            write_red: true,
+            write_green: true,
+            write_blue: true,
+            write_alpha: true,
+            format: RenderTargetFormat::I32,
+        }
+    }
+}
+
+impl Default for ColorAttachment {
+    fn default() -> Self {
+        Self::default()
+    }
 }
 
 pub struct PipelineBuilder<'a> {
@@ -612,10 +724,20 @@ pub struct PipelineBuilder<'a> {
     stencil_reference_value: i32,
     stencil_read_mask: i32,
     stencil_write_mask: i32,
+
+    blending: Option<Blending>,
+    alpha_blending: Option<Blending>,
+
+    color_attachments: &'a [ColorAttachment],
+    depth_attachment_bits: i32,
+    stencil_attachment_bits: i32,
+
+    conservative_rasterization: bool,
 }
 
 impl<'a> PipelineBuilder<'a> {
     pub fn new(vertex_shader: &'a Shader, fragment_shader: &'a Shader) -> Self {
+        static DEFAULT_COLOR_ATTACHMENT: [ColorAttachment; 1] = [ColorAttachment::default()];
         Self {
             vertex_shader,
             fragment_shader,
@@ -629,7 +751,96 @@ impl<'a> PipelineBuilder<'a> {
             stencil_reference_value: 0,
             stencil_read_mask: 0,
             stencil_write_mask: 0,
+            blending: None,
+            alpha_blending: None,
+            color_attachments: &DEFAULT_COLOR_ATTACHMENT,
+            depth_attachment_bits: 0,
+            stencil_attachment_bits: 0,
+            conservative_rasterization: false,
         }
+    }
+
+    pub fn geometry_shader(mut self, geometry_shader: &'a Shader) -> Self {
+        self.geometry_shader = Some(geometry_shader);
+        self
+    }
+
+    pub fn tessellation_control_shader(mut self, tessellation_control_shader: &'a Shader) -> Self {
+        self.tessellation_control_shader = Some(tessellation_control_shader);
+        self
+    }
+
+    pub fn tessellation_evaluation_shader(
+        mut self,
+        tessellation_evaluation_shader: &'a Shader,
+    ) -> Self {
+        self.tessellation_evaluation_shader = Some(tessellation_evaluation_shader);
+        self
+    }
+
+    pub fn cull_mode(mut self, cull_mode: CullMode) -> Self {
+        self.cull_mode = cull_mode;
+        self
+    }
+
+    pub fn depth_mode(mut self, depth_mode: Option<CompareMode>) -> Self {
+        self.depth_mode = depth_mode;
+        self
+    }
+
+    pub fn front_stencil(mut self, front_stencil: Option<Stencil>) -> Self {
+        self.front_stencil = front_stencil;
+        self
+    }
+
+    pub fn back_stencil(mut self, back_stencil: Option<Stencil>) -> Self {
+        self.back_stencil = back_stencil;
+        self
+    }
+
+    pub fn stencil_reference_value(mut self, stencil_reference_value: i32) -> Self {
+        self.stencil_reference_value = stencil_reference_value;
+        self
+    }
+
+    pub fn stencil_read_mask(mut self, stencil_read_mask: i32) -> Self {
+        self.stencil_read_mask = stencil_read_mask;
+        self
+    }
+
+    pub fn stencil_write_mask(mut self, stencil_write_mask: i32) -> Self {
+        self.stencil_write_mask = stencil_write_mask;
+        self
+    }
+
+    pub fn blending(mut self, blending: Option<Blending>) -> Self {
+        self.blending = blending;
+        self
+    }
+
+    pub fn alpha_blending(mut self, alpha_blending: Option<Blending>) -> Self {
+        self.alpha_blending = alpha_blending;
+        self
+    }
+
+    pub fn color_attachments(mut self, color_attachments: &'a [ColorAttachment]) -> Self {
+        self.color_attachments = color_attachments;
+        self
+    }
+
+    pub fn depth_attachment_bits(mut self, depth_attachment_bits: i32) -> Self {
+        self.depth_attachment_bits = depth_attachment_bits;
+        self
+    }
+
+    pub fn stencil_attachment_bits(mut self, stencil_attachment_bits: i32) -> Self {
+        self.stencil_attachment_bits = stencil_attachment_bits;
+        self
+    }
+
+    pub fn conservative_rasterization(mut self, conservative_rasterization: bool) -> Self {
+        self.conservative_rasterization = conservative_rasterization;
+        self
     }
 
     pub fn build(self) -> Pipeline {
@@ -648,6 +859,47 @@ impl<'a> PipelineBuilder<'a> {
                 pipeline.depth_mode = depth_mode.into_raw();
             }
 
+            if let Some(s) = self.front_stencil {
+                pipeline.stencil_front_mode = s.mode.into_raw();
+                pipeline.stencil_front_both_pass = s.both_pass.into_raw();
+                pipeline.stencil_front_depth_fail = s.depth_fail.into_raw();
+                pipeline.stencil_front_fail = s.fail.into_raw();
+            }
+
+            if let Some(s) = self.back_stencil {
+                pipeline.stencil_back_mode = s.mode.into_raw();
+                pipeline.stencil_back_both_pass = s.both_pass.into_raw();
+                pipeline.stencil_back_depth_fail = s.depth_fail.into_raw();
+                pipeline.stencil_back_fail = s.fail.into_raw();
+            }
+
+            pipeline.stencil_reference_value = self.stencil_reference_value;
+            pipeline.stencil_read_mask = self.stencil_read_mask;
+            pipeline.stencil_write_mask = self.stencil_write_mask;
+
+            if let Some(blending) = self.blending {
+                pipeline.blend_source = blending.source.into_raw();
+                pipeline.blend_destination = blending.destination.into_raw();
+                pipeline.blend_operation = blending.operation.into_raw();
+            }
+
+            if let Some(blending) = self.alpha_blending {
+                pipeline.alpha_blend_source = blending.source.into_raw();
+                pipeline.alpha_blend_destination = blending.destination.into_raw();
+                pipeline.alpha_blend_operation = blending.operation.into_raw();
+            }
+
+            pipeline.color_attachment_count = self.color_attachments.len() as i32;
+            for (i, color_attachment) in self.color_attachments.iter().enumerate() {
+                pipeline.color_write_mask_red[i] = color_attachment.write_red;
+                pipeline.color_write_mask_green[i] = color_attachment.write_green;
+                pipeline.color_write_mask_blue[i] = color_attachment.write_blue;
+                pipeline.color_write_mask_alpha[i] = color_attachment.write_alpha;
+                pipeline.color_attachment[i] = color_attachment.format.into_raw();
+            }
+            pipeline.depth_attachment_bits = self.depth_attachment_bits;
+            pipeline.stencil_attachment_bits = self.stencil_attachment_bits;
+            pipeline.conservative_rasterization = self.conservative_rasterization;
             // TODO: the rest
             kinc_g4_pipeline_compile(&mut pipeline as *mut kinc_g4_pipeline_t);
 
