@@ -2,3 +2,6 @@
 	path = kinc/Kinc
 	url = https://github.com/Kode/Kinc
 	branch = main
+[submodule "krafix/krafix"]
+	path = krafix/krafix
+	url = https://github.com/Kode/krafix

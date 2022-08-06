@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
-use syn::{parse_macro_input, Expr, Ident, LitStr, Token, Type, Visibility};
+use syn::{parse_macro_input, Expr, Ident, LitStr, Token, Type, Visibility, LitByteStr};
 
 enum ShaderKind {
     Vertex,
@@ -11,13 +12,27 @@ enum ShaderKind {
 
 struct Shader {
     kind: ShaderKind,
+    lang: String,
     source: String,
+}
+
+extern "C" {
+    fn krafix_compile(
+        source: *const u8,
+        output: *mut u8,
+        length: *mut i32,
+        targetlang: *const u8,
+        system: *const u8,
+        shadertype: *const u8,
+    ) -> i32;
 }
 
 impl Parse for Shader {
     fn parse(input: ParseStream) -> Result<Self> {
         let kind = input.parse::<Ident>()?;
-        input.parse::<Token![:]>()?;
+        input.parse::<Token![,]>()?;
+        let lang = input.parse::<Ident>()?;
+        input.parse::<Token![,]>()?;
         let source: LitStr = input.parse()?;
         let shader_code = source.value();
 
@@ -29,23 +44,41 @@ impl Parse for Shader {
 
         Ok(Shader {
             kind,
+            lang: lang.to_string(),
             source: shader_code,
         })
     }
 }
 
 #[proc_macro]
-pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let shader: Shader = parse_macro_input!(input as Shader);
 
-    // std::process::Command::new("krafix")
-    //     .arg(shader.kind.to_string())
-    //     .arg(shader.source)
-    //     .output()
-    //     .expect("Failed to run shader command");
+    let mut v = vec![0_u8; 1024];
+    let mut len: i32 = v.len() as i32;
+    let targetlang = shader.lang.extend_from_slice(b"\0");
+    let system = if cfg!(windows) {
+        &b"windows\0"[..]
+    }else if cfg!(target_os = "macos") {
+        &b"macos\0"[..]
+    } else {
+        &b"linux\0"[..]
+    };
 
+    let shadertype = match shader.kind {
+        ShaderKind::Vertex => b"vert\0",
+        ShaderKind::Fragment => b"frag\0",
+    };
+
+    unsafe {
+        if krafix_compile(shader.source.as_ptr(), v.as_mut_ptr(), &mut len as *mut i32, targetlang.as_ptr(), system.as_ptr(), shadertype.as_ptr()) != 0 {
+            panic!("Failed to compile shader");
+        }
+    }
+
+    let byte_string = LitByteStr::new(&v[0..(len as usize)], Span::call_site());
     quote! {
-        ()
+        #byte_string
     }
     .into()
 }

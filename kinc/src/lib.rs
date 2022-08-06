@@ -6,6 +6,26 @@ use std::{borrow::BorrowMut, cell::RefCell, ffi::CString};
 
 use g4::Graphics4;
 
+pub use krafix::compile_shader as krafix_compile;
+
+#[macro_export]
+macro_rules! compile_shader {
+    ($t:ident, $source:expr) => {
+        
+            #[cfg(all(feature = "opengl", any(target_os = "linux", target_os = "android")))]
+            $crate::krafix_compile!($t,essl,$source)
+            // #[cfg(all(feature = "opengl", any(target_os = "windows")))]
+            // $crate::krafix_compile!($t,glsl,$source)
+            // #[cfg(all(feature = "metal"))]
+            // $crate::krafix_compile!($t,metal,$source)
+            // #[cfg(all(feature = "vulkan"))]
+            // $crate::krafix_compile!($t,spirv,$source)
+            // #[cfg(any(feature = "d3d12", feature = "d3d11"))]
+            // $crate::krafix_compile!($t,d3d11,$source)
+        
+    };
+}
+
 use crate::sys::*;
 
 trait GetRaw<T> {
