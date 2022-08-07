@@ -51,6 +51,16 @@ impl GraphicsApi {
             Self::Metal => matches!(os, TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS),
         }
     }
+
+    pub fn to_feature(self) -> &'static str {
+        match self {
+            Self::OpenGL => "opengl",
+            Self::Vulkan => "vulkan",
+            Self::D3D11 => "d3d11",
+            Self::D3D12 => "d3d12",
+            Self::Metal => "metal",
+        }
+    }
 }
 
 impl Display for GraphicsApi {
@@ -193,11 +203,13 @@ fn main() {
     } else if env::var("CARGO_FEATURE_metal").is_ok() {
         GraphicsApi::Metal
     } else {
-        match target_os {
+        let api = match target_os {
             TargetOS::MacOS | TargetOS::IOS | TargetOS::TVOS => GraphicsApi::Metal,
             TargetOS::Windows => GraphicsApi::D3D11,
             TargetOS::Android | TargetOS::Linux | TargetOS::Web => GraphicsApi::OpenGL,
-        }
+        };
+        println!("cargo:rustc-cfg=feature=\"{}\"", api.to_feature());
+        api
     };
 
     if !graphics.is_supported(target_os) {

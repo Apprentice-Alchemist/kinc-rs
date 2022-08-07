@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
@@ -56,7 +58,7 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 
     let mut v = vec![0_u8; 1024];
     let mut len: i32 = v.len() as i32;
-    let targetlang = shader.lang.extend_from_slice(b"\0");
+    let targetlang = CString::new(shader.lang).unwrap();
     let system = if cfg!(windows) {
         &b"windows\0"[..]
     }else if cfg!(target_os = "macos") {
@@ -71,7 +73,7 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     unsafe {
-        if krafix_compile(shader.source.as_ptr(), v.as_mut_ptr(), &mut len as *mut i32, targetlang.as_ptr(), system.as_ptr(), shadertype.as_ptr()) != 0 {
+        if krafix_compile(shader.source.as_ptr(), v.as_mut_ptr(), &mut len as *mut i32, targetlang.as_ptr().cast(), system.as_ptr(), shadertype.as_ptr()) != 0 {
             panic!("Failed to compile shader");
         }
     }
