@@ -38,7 +38,7 @@ jobs:
           #   target: aarch64-linux-android
           #   graphics: vulkan
     steps:
-      - name: Checkout KincHL
+      - name: Checkout
         uses: actions/checkout@v2
       - name: install rust stable
         uses: actions-rs/toolchain@v1
@@ -51,10 +51,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v1
 
-      - name: Get Kinc Tools
+      - name: Get submodules
         run: |
           git submodule update --init
           kinc/Kinc/get_dlc
+          git -C krafix/krafix submodule update --init --depth 1
 
       - name: Get LunarG package list.
         if: matrix.graphics == 'vulkan'
