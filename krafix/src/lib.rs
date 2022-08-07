@@ -2,10 +2,11 @@ use std::ffi::CString;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{quote, quote_spanned};
-use syn::parse::{Parse, ParseStream, Result};
-use syn::spanned::Spanned;
-use syn::{parse_macro_input, Expr, Ident, LitStr, Token, Type, Visibility, LitByteStr};
+use quote::quote;
+use syn::{
+    parse::{Parse, ParseStream, Result},
+    parse_macro_input, Ident, LitByteStr, LitStr, Token,
+};
 
 enum ShaderKind {
     Vertex,
@@ -61,7 +62,7 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let targetlang = CString::new(shader.lang).unwrap();
     let system = if cfg!(windows) {
         &b"windows\0"[..]
-    }else if cfg!(target_os = "macos") {
+    } else if cfg!(target_os = "macos") {
         &b"macos\0"[..]
     } else {
         &b"linux\0"[..]
@@ -73,7 +74,15 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     unsafe {
-        if krafix_compile(shader.source.as_ptr(), v.as_mut_ptr(), &mut len as *mut i32, targetlang.as_ptr().cast(), system.as_ptr(), shadertype.as_ptr()) != 0 {
+        if krafix_compile(
+            shader.source.as_ptr(),
+            v.as_mut_ptr(),
+            &mut len as *mut i32,
+            targetlang.as_ptr().cast(),
+            system.as_ptr(),
+            shadertype.as_ptr(),
+        ) != 0
+        {
             panic!("Failed to compile shader");
         }
     }

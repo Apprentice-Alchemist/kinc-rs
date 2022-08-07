@@ -172,6 +172,51 @@ impl VertexData {
     }
 }
 
+impl IntoRaw<kinc_g4_vertex_data_t> for VertexData {
+    fn into_raw(self) -> kinc_g4_vertex_data_t {
+        match self {
+            Self::None => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_NONE,
+            Self::F32_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_1X,
+            Self::F32_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_2X,
+            Self::F32_3X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_3X,
+            Self::F32_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_4X,
+            Self::F32_4X4 => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_4X4,
+            Self::I8_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_1X,
+            Self::U8_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_1X,
+            Self::I8_1xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_1X_NORMALIZED,
+            Self::U8_1xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_1X_NORMALIZED,
+            Self::I8_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_2X,
+            Self::U8_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_2X,
+            Self::I8_2xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_2X_NORMALIZED,
+            Self::U8_2xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_2X_NORMALIZED,
+            Self::I8_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_4X,
+            Self::U8_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_4X,
+            Self::I8_4xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I8_4X_NORMALIZED,
+            Self::U8_4xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U8_4X_NORMALIZED,
+            Self::I16_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_1X,
+            Self::U16_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_1X,
+            Self::I16_1xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_1X_NORMALIZED,
+            Self::U16_1xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_1X_NORMALIZED,
+            Self::I16_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_2X,
+            Self::U16_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_2X,
+            Self::I16_2xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_2X_NORMALIZED,
+            Self::U16_2xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_2X_NORMALIZED,
+            Self::I16_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_4X,
+            Self::U16_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_4X,
+            Self::I16_4xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I16_4X_NORMALIZED,
+            Self::U16_4xNormalized => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U16_4X_NORMALIZED,
+            Self::I32_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I32_1X,
+            Self::U32_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U32_1X,
+            Self::I32_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I32_2X,
+            Self::U32_2X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U32_2X,
+            Self::I32_3X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I32_3X,
+            Self::U32_3X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U32_3X,
+            Self::I32_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_I32_4X,
+            Self::U32_4X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_U32_4X,
+        }
+    }
+}
+
 pub struct VertexElement<'a> {
     name: &'a str,
     data: VertexData,
@@ -207,7 +252,7 @@ impl<'a> VertexStructureBuilder<'a> {
                 kinc_g4_vertex_structure_add(
                     vertex_structure.get_raw(),
                     name.as_ptr(),
-                    element.data as u32,
+                    element.data.into_raw(),
                 );
             }
             vertex_structure.vertex_structure.instanced = self.instanced;
