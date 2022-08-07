@@ -15,21 +15,21 @@ macro_rules! compile_shader {
         $crate::krafix_compile!($t, essl, $source)
     };
 }
-#[cfg(all(feature = "opengl", any(target_os = "windows")))]
+#[cfg(all(feature = "opengl", target_os = "windows"))]
 #[macro_export]
 macro_rules! compile_shader {
     ($t:ident, $source:expr) => {
         $crate::krafix_compile!($t, glsl, $source)
     };
 }
-#[cfg(all(feature = "metal"))]
+#[cfg(all(feature = "metal", not(feature = "opengl")))]
 #[macro_export]
 macro_rules! compile_shader {
     ($t:ident, $source:expr) => {
         $crate::krafix_compile!($t, metal, $source)
     };
 }
-#[cfg(all(feature = "vulkan"))]
+#[cfg(all(feature = "vulkan", not(feature = "opengl")))]
 #[macro_export]
 macro_rules! compile_shader {
     ($t:ident, $source:expr) => {

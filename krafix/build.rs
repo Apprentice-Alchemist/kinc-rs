@@ -94,6 +94,7 @@ fn main() {
     }
 
     builder.cpp(true);
+    builder.flag_if_supported("-std=c++11");
 
     for define in defines {
         builder.define(define, None);

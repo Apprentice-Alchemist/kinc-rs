@@ -56,7 +56,7 @@ impl Parse for Shader {
 pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let shader: Shader = parse_macro_input!(input as Shader);
 
-    let mut v = vec![0_u8; 1024];
+    let mut v = vec![0_u8; 1024 * 1024];
     let mut len: i32 = v.len() as i32;
     let targetlang = CString::new(shader.lang).unwrap();
     let system = if cfg!(windows) {

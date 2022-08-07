@@ -216,6 +216,7 @@ impl<'a> VertexStructureBuilder<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct VertexStructure {
     vertex_structure: kinc_g4_vertex_structure_t,
 }
@@ -375,10 +376,19 @@ impl<T: ValidIndexFormat> Drop for IndexLockResult<'_, T> {
     }
 }
 
-#[repr(u32)]
+#[derive(Clone, Copy, Debug)]
 pub enum IndexBufferFormat {
-    U16 = kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_16BIT,
-    U32 = kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_32BIT,
+    U16,
+    U32,
+}
+
+impl IntoRaw<kinc_g4_index_buffer_format_t> for IndexBufferFormat {
+    fn into_raw(self) -> kinc_g4_index_buffer_format_t {
+        match self {
+            IndexBufferFormat::U16 => kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_16BIT,
+            IndexBufferFormat::U32 => kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_32BIT,
+        }
+    }
 }
 
 pub struct IndexBuffer {
@@ -392,7 +402,7 @@ impl IndexBuffer {
             kinc_g4_index_buffer_init(
                 &mut index_buffer as *mut _,
                 count,
-                format as u32,
+                format.into_raw(),
                 usage.into_raw(),
             );
             Self { index_buffer }
@@ -715,6 +725,8 @@ pub struct PipelineBuilder<'a> {
     tessellation_control_shader: Option<&'a Shader>,
     tessellation_evaluation_shader: Option<&'a Shader>,
 
+    input_layout: &'a [VertexStructure],
+
     cull_mode: CullMode,
     depth_mode: Option<CompareMode>,
 
@@ -736,14 +748,19 @@ pub struct PipelineBuilder<'a> {
 }
 
 impl<'a> PipelineBuilder<'a> {
-    pub fn new(vertex_shader: &'a Shader, fragment_shader: &'a Shader) -> Self {
-        static DEFAULT_COLOR_ATTACHMENT: [ColorAttachment; 1] = [ColorAttachment::default()];
+    pub fn new(
+        vertex_shader: &'a Shader,
+        fragment_shader: &'a Shader,
+        input_layout: &'a [VertexStructure],
+        color_attachments: &'a [ColorAttachment],
+    ) -> Self {
         Self {
             vertex_shader,
             fragment_shader,
             geometry_shader: None,
             tessellation_control_shader: None,
             tessellation_evaluation_shader: None,
+            input_layout,
             cull_mode: CullMode::Nothing,
             depth_mode: None,
             front_stencil: None,
@@ -753,7 +770,7 @@ impl<'a> PipelineBuilder<'a> {
             stencil_write_mask: 0,
             blending: None,
             alpha_blending: None,
-            color_attachments: &DEFAULT_COLOR_ATTACHMENT,
+            color_attachments,
             depth_attachment_bits: 0,
             stencil_attachment_bits: 0,
             conservative_rasterization: false,
@@ -823,11 +840,6 @@ impl<'a> PipelineBuilder<'a> {
         self
     }
 
-    pub fn color_attachments(mut self, color_attachments: &'a [ColorAttachment]) -> Self {
-        self.color_attachments = color_attachments;
-        self
-    }
-
     pub fn depth_attachment_bits(mut self, depth_attachment_bits: i32) -> Self {
         self.depth_attachment_bits = depth_attachment_bits;
         self
@@ -847,6 +859,14 @@ impl<'a> PipelineBuilder<'a> {
         unsafe {
             let mut pipeline: kinc_g4_pipeline_t = core::mem::zeroed();
             kinc_g4_pipeline_init(&mut pipeline as *mut kinc_g4_pipeline_t);
+            for (i, vertex_structure) in self.input_layout.iter().enumerate() {
+                if i < 16 {
+                    pipeline.input_layout[i] = &vertex_structure.vertex_structure
+                        as *const kinc_g4_vertex_structure_t
+                        as *mut kinc_g4_vertex_structure_t;
+                }
+            }
+
             pipeline.vertex_shader = self.vertex_shader.get_raw();
             pipeline.fragment_shader = self.fragment_shader.get_raw();
             pipeline.geometry_shader = self.geometry_shader.get_raw();
@@ -900,7 +920,7 @@ impl<'a> PipelineBuilder<'a> {
             pipeline.depth_attachment_bits = self.depth_attachment_bits;
             pipeline.stencil_attachment_bits = self.stencil_attachment_bits;
             pipeline.conservative_rasterization = self.conservative_rasterization;
-            // TODO: the rest
+
             kinc_g4_pipeline_compile(&mut pipeline as *mut kinc_g4_pipeline_t);
 
             Pipeline { pipeline }

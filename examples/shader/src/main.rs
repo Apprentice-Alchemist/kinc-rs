@@ -33,29 +33,41 @@ impl<'a> Callbacks for Shader {
 fn main() {
     let (kinc, _) = kinc::KincBuilder::new("Kinc + Rust", 500, 500).build();
 
-    let vb = kinc::compile_shader!(vertex, "#version 450
+    let vb = kinc::compile_shader!(
+        vertex,
+        "#version 450
 
 in vec3 pos;
 
 void main() {
 	gl_Position = vec4(pos.x, pos.y, 0.5, 1.0);
-}");
+}"
+    );
 
-    let fb = kinc::compile_shader!(fragment, "#version 450
+    let fb = kinc::compile_shader!(
+        fragment,
+        "#version 450
 
 out vec4 frag;
 
 void main() {
 	frag = vec4(1.0, 0.0, 0.0, 1.0);
-}");
+}"
+    );
 
     let vertex_shader = kinc::g4::Shader::new(vb, kinc::g4::ShaderType::Vertex);
     let fragment_shader = kinc::g4::Shader::new(fb, kinc::g4::ShaderType::Fragment);
-
-    let pipeline = PipelineBuilder::new(&vertex_shader, &fragment_shader).build();
     let vertex_structure = VertexStructureBuilder::new()
         .add("pos", kinc::g4::VertexData::F32_3X)
         .build();
+    let pipeline = PipelineBuilder::new(
+        &vertex_shader,
+        &fragment_shader,
+        &[vertex_structure.clone()],
+        &[Default::default()],
+    )
+    .build();
+
     let vertex_buffer = VertexBuffer::new(VertexBufferDesc {
         count: 3,
         vertex_structure,

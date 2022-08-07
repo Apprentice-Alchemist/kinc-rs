@@ -192,15 +192,15 @@ fn main() {
         }
     }
 
-    let graphics = if env::var("CARGO_FEATURE_opengl").is_ok() {
+    let graphics = if env::var("CARGO_FEATURE_OPENGL").is_ok() {
         GraphicsApi::OpenGL
-    } else if env::var("CARGO_FEATURE_vulkan").is_ok() {
+    } else if env::var("CARGO_FEATURE_VULKAN").is_ok() {
         GraphicsApi::Vulkan
-    } else if env::var("CARGO_FEATURE_d3d11").is_ok() {
+    } else if env::var("CARGO_FEATURE_D3D11").is_ok() {
         GraphicsApi::D3D11
-    } else if env::var("CARGO_FEATURE_d3d12").is_ok() {
+    } else if env::var("CARGO_FEATURE_D3D12").is_ok() {
         GraphicsApi::D3D12
-    } else if env::var("CARGO_FEATURE_metal").is_ok() {
+    } else if env::var("CARGO_FEATURE_METAL").is_ok() {
         GraphicsApi::Metal
     } else {
         let api = match target_os {

@@ -13,7 +13,6 @@ syn = { version = "1.0", features = ["full", "extra-traits"] }
 
 [build-dependencies]
 cc = { version ="1.0.73", features = ["parallel"] }
-glob = "0.3.0"
 
 [lib]
 proc-macro = true
