@@ -46,7 +46,7 @@ fn main() {
                     builder.file(f);
                 }
             });
-        } else if pat.ends_with("*") {
+        } else if pat.ends_with('*') {
             for f in std::fs::read_dir(&pat[0..pat.len() - 1]).unwrap() {
                 let f = f.unwrap().path();
                 let f = f.to_str().unwrap();

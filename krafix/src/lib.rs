@@ -1,6 +1,5 @@
 use std::ffi::CString;
 
-use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
@@ -57,8 +56,7 @@ impl Parse for Shader {
 pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let shader: Shader = parse_macro_input!(input as Shader);
 
-    let mut v = vec![0_u8; 1024 * 1024];
-    let mut len: i32 = v.len() as i32;
+    let source = CString::new(shader.source).unwrap();
     let targetlang = CString::new(shader.lang).unwrap();
     let system = if cfg!(windows) {
         &b"windows\0"[..]
@@ -73,9 +71,12 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         ShaderKind::Fragment => b"frag\0",
     };
 
+    let mut v = vec![0_u8; 1024 * 1024];
+    let mut len: i32 = v.len() as i32;
+
     unsafe {
         if krafix_compile(
-            shader.source.as_ptr(),
+            source.as_ptr().cast(),
             v.as_mut_ptr(),
             &mut len as *mut i32,
             targetlang.as_ptr().cast(),
