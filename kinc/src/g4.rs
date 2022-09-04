@@ -6,10 +6,14 @@ bitflags::bitflags! {
         const ALL = Self::COLOR.bits | Self::DEPTH.bits | Self::STENCIL.bits;
     }
 }
-use std::{
-    ffi::{c_void, CString},
+use core::{
+    cell::UnsafeCell,
+    ffi::c_void,
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
+
+use alloc::vec::Vec;
 
 use crate::{sys::*, GetRaw, IntoRaw, Window};
 
@@ -56,15 +60,9 @@ impl<'a> RenderPass<'a> {
         }
     }
 
-    pub fn end(self) {}
-}
-
-impl<'a> Drop for RenderPass<'a> {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            unsafe {
-                kinc_g4_end(self.window.window);
-            }
+    pub fn end(self) {
+        unsafe {
+            kinc_g4_end(self.window.window);
         }
     }
 }
@@ -245,36 +243,47 @@ impl<'a> VertexStructureBuilder<'a> {
 
     pub fn build(self) -> VertexStructure {
         unsafe {
-            let mut vertex_structure: VertexStructure = std::mem::zeroed();
+            let mut vertex_structure: VertexStructure = core::mem::zeroed();
             kinc_g4_vertex_structure_init(vertex_structure.get_raw());
             for element in self.elements.iter() {
-                let name = CString::new(element.name).unwrap();
+                let name = alloc::vec![0; element.name.len() + 1];
+
                 kinc_g4_vertex_structure_add(
                     vertex_structure.get_raw(),
                     name.as_ptr(),
                     element.data.into_raw(),
                 );
             }
-            vertex_structure.vertex_structure.instanced = self.instanced;
+            vertex_structure.vertex_structure.get_mut().instanced = self.instanced;
             vertex_structure
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct VertexStructure {
-    vertex_structure: kinc_g4_vertex_structure_t,
+    vertex_structure: UnsafeCell<kinc_g4_vertex_structure_t>,
 }
 
 impl VertexStructure {
     pub fn size(&self) -> i32 {
-        self.vertex_structure.size
+        unsafe { (*self.vertex_structure.get()).size }
+    }
+}
+
+impl Clone for VertexStructure {
+    fn clone(&self) -> Self {
+        unsafe {
+            Self {
+                vertex_structure: UnsafeCell::new(*self.vertex_structure.get()),
+            }
+        }
     }
 }
 
 impl GetRaw<kinc_g4_vertex_structure> for VertexStructure {
     fn get_raw(&self) -> *mut kinc_g4_vertex_structure {
-        &self.vertex_structure as *const _ as *mut _
+        self.vertex_structure.get()
     }
 }
 
@@ -286,7 +295,7 @@ pub struct VertexBufferDesc {
 }
 
 pub struct VertexBuffer {
-    vertex_buffer: kinc_g4_vertex_buffer,
+    vertex_buffer: UnsafeCell<kinc_g4_vertex_buffer>,
 }
 
 pub struct VertexLockResult<'a, T> {
@@ -299,9 +308,9 @@ impl<T> Deref for VertexLockResult<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         unsafe {
-            std::slice::from_raw_parts(
+            core::slice::from_raw_parts(
                 self.data,
-                (self.count * self.vertex_buffer.stride()) as usize / std::mem::size_of::<T>(),
+                (self.count * self.vertex_buffer.stride()) as usize / core::mem::size_of::<T>(),
             )
         }
     }
@@ -310,9 +319,9 @@ impl<T> Deref for VertexLockResult<'_, T> {
 impl<T> DerefMut for VertexLockResult<'_, T> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
-            std::slice::from_raw_parts_mut(
+            core::slice::from_raw_parts_mut(
                 self.data,
-                (self.count * self.vertex_buffer.stride()) as usize / std::mem::size_of::<T>(),
+                (self.count * self.vertex_buffer.stride()) as usize / core::mem::size_of::<T>(),
             )
         }
     }
@@ -328,27 +337,31 @@ impl<T> Drop for VertexLockResult<'_, T> {
 
 impl VertexBuffer {
     pub fn new(desc: VertexBufferDesc) -> Self {
-        unsafe {
-            let mut vertex_buffer: kinc_g4_vertex_buffer = std::mem::zeroed();
+        let mut vertex_buffer = unsafe {
+            let mut vb: MaybeUninit<kinc_g4_vertex_buffer> = MaybeUninit::zeroed();
             kinc_g4_vertex_buffer_init(
-                &mut vertex_buffer as *mut _,
+                vb.as_mut_ptr(),
                 desc.count,
                 desc.vertex_structure.get_raw(),
                 desc.usage.into_raw(),
                 desc.instance_data_step_rate,
             );
-            let this = Self { vertex_buffer };
-            // This is only needed because otherwise the GL backend will throw errors when settings the vertex buffer.
-            // A potential alternative would be to keep track of wether the buffer has been locked and unlocked on the Rust side,
-            // and panic if it is not.
-            // But that would make things even more complicated...
-            this.lock(0, desc.count)
-                .deref_mut()
-                .iter_mut()
-                .for_each(|x| *x = 0.0);
+            // usage of zeroed() + the kinc init function should be sufficient to initialize the vertex buffer
+            vb.assume_init()
+        };
+        let this = Self {
+            vertex_buffer: UnsafeCell::new(vertex_buffer),
+        };
+        // This is only needed because otherwise the GL backend will throw errors when settings the vertex buffer.
+        // A potential alternative would be to keep track of wether the buffer has been locked and unlocked on the Rust side,
+        // and panic if it is not.
+        // But that would make things even more complicated...
+        this.lock(0, desc.count)
+            .deref_mut()
+            .iter_mut()
+            .for_each(|x| *x = 0.0);
 
-            this
-        }
+        this
     }
 
     pub fn count(&self) -> i32 {
@@ -377,7 +390,7 @@ impl VertexBuffer {
 
 impl GetRaw<kinc_g4_vertex_buffer> for VertexBuffer {
     fn get_raw(&self) -> *mut kinc_g4_vertex_buffer {
-        &self.vertex_buffer as *const kinc_g4_vertex_buffer as *mut kinc_g4_vertex_buffer
+        self.vertex_buffer.get()
     }
 }
 
@@ -403,13 +416,13 @@ pub struct IndexLockResult<'a, T: ValidIndexFormat> {
 impl<T: ValidIndexFormat> Deref for IndexLockResult<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
-        unsafe { std::slice::from_raw_parts(self.data, self.count as usize) }
+        unsafe { core::slice::from_raw_parts(self.data, self.count as usize) }
     }
 }
 
 impl<T: ValidIndexFormat> DerefMut for IndexLockResult<'_, T> {
     fn deref_mut(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.data, self.count as usize) }
+        unsafe { core::slice::from_raw_parts_mut(self.data, self.count as usize) }
     }
 }
 
@@ -437,20 +450,22 @@ impl IntoRaw<kinc_g4_index_buffer_format_t> for IndexBufferFormat {
 }
 
 pub struct IndexBuffer {
-    index_buffer: kinc_g4_index_buffer,
+    index_buffer: UnsafeCell<kinc_g4_index_buffer>,
 }
 
 impl IndexBuffer {
     pub fn new(count: i32, usage: Usage, format: IndexBufferFormat) -> Self {
         unsafe {
-            let mut index_buffer: kinc_g4_index_buffer = std::mem::zeroed();
+            let mut index_buffer: MaybeUninit<kinc_g4_index_buffer> = MaybeUninit::zeroed();
             kinc_g4_index_buffer_init(
-                &mut index_buffer as *mut _,
+                index_buffer.as_mut_ptr(),
                 count,
                 format.into_raw(),
                 usage.into_raw(),
             );
-            Self { index_buffer }
+            Self {
+                index_buffer: UnsafeCell::new(index_buffer.assume_init()),
+            }
         }
     }
 
@@ -472,7 +487,7 @@ impl IndexBuffer {
 
 impl GetRaw<kinc_g4_index_buffer> for IndexBuffer {
     fn get_raw(&self) -> *mut kinc_g4_index_buffer {
-        &self.index_buffer as *const kinc_g4_index_buffer as *mut kinc_g4_index_buffer
+        self.index_buffer.get()
     }
 }
 
@@ -485,12 +500,12 @@ impl Drop for IndexBuffer {
 }
 
 pub struct Texture {
-    texture: kinc_g4_texture,
+    texture: UnsafeCell<kinc_g4_texture>,
 }
 
 impl GetRaw<kinc_g4_texture> for Texture {
     fn get_raw(&self) -> *mut kinc_g4_texture {
-        &self.texture as *const kinc_g4_texture as *mut kinc_g4_texture
+        self.texture.get()
     }
 }
 
@@ -520,27 +535,29 @@ impl IntoRaw<kinc_g4_shader_type_t> for ShaderType {
 }
 
 pub struct Shader {
-    shader: kinc_g4_shader_t,
+    shader: UnsafeCell<kinc_g4_shader_t>,
 }
 
 impl Shader {
     pub fn new(code: &[u8], t: ShaderType) -> Self {
         unsafe {
-            let mut shader: kinc_g4_shader_t = std::mem::zeroed();
+            let mut shader = MaybeUninit::zeroed();
             kinc_g4_shader_init(
-                &mut shader as *mut _,
+                shader.as_mut_ptr(),
                 code.as_ptr().cast::<c_void>() as *mut _,
-                code.len().try_into().unwrap(),
+                code.len() as size_t,
                 t.into_raw(),
             );
-            Self { shader }
+            Self {
+                shader: UnsafeCell::new(shader.assume_init()),
+            }
         }
     }
 }
 
 impl GetRaw<kinc_g4_shader_t> for Shader {
     fn get_raw(&self) -> *mut kinc_g4_shader_t {
-        &self.shader as *const kinc_g4_shader_t as *mut kinc_g4_shader_t
+        self.shader.get()
     }
 }
 
@@ -712,12 +729,12 @@ impl StencilAction {
     }
 }
 pub struct Pipeline {
-    pipeline: kinc_g4_pipeline,
+    pipeline: UnsafeCell<kinc_g4_pipeline>,
 }
 
 impl GetRaw<kinc_g4_pipeline> for Pipeline {
     fn get_raw(&self) -> *mut kinc_g4_pipeline {
-        &self.pipeline as *const kinc_g4_pipeline as *mut kinc_g4_pipeline
+        self.pipeline.get()
     }
 }
 
@@ -901,74 +918,76 @@ impl<'a> PipelineBuilder<'a> {
     }
 
     pub fn build(self) -> Pipeline {
+        let mut pipeline = unsafe {
+            let mut pipeline = MaybeUninit::zeroed();
+            kinc_g4_pipeline_init(pipeline.as_mut_ptr());
+            pipeline.assume_init()
+        };
+        for (i, vertex_structure) in self.input_layout.iter().enumerate() {
+            if i < 16 {
+                pipeline.input_layout[i] = vertex_structure.vertex_structure.get()
+            }
+        }
+
+        pipeline.vertex_shader = self.vertex_shader.get_raw();
+        pipeline.fragment_shader = self.fragment_shader.get_raw();
+        pipeline.geometry_shader = self.geometry_shader.get_raw();
+        pipeline.tessellation_control_shader = self.tessellation_control_shader.get_raw();
+        pipeline.tessellation_evaluation_shader = self.tessellation_evaluation_shader.get_raw();
+        pipeline.cull_mode = self.cull_mode.into_raw();
+
+        if let Some(depth_mode) = self.depth_mode {
+            pipeline.depth_write = true;
+            pipeline.depth_mode = depth_mode.into_raw();
+        }
+
+        if let Some(s) = self.front_stencil {
+            pipeline.stencil_front_mode = s.mode.into_raw();
+            pipeline.stencil_front_both_pass = s.both_pass.into_raw();
+            pipeline.stencil_front_depth_fail = s.depth_fail.into_raw();
+            pipeline.stencil_front_fail = s.fail.into_raw();
+        }
+
+        if let Some(s) = self.back_stencil {
+            pipeline.stencil_back_mode = s.mode.into_raw();
+            pipeline.stencil_back_both_pass = s.both_pass.into_raw();
+            pipeline.stencil_back_depth_fail = s.depth_fail.into_raw();
+            pipeline.stencil_back_fail = s.fail.into_raw();
+        }
+
+        pipeline.stencil_reference_value = self.stencil_reference_value;
+        pipeline.stencil_read_mask = self.stencil_read_mask;
+        pipeline.stencil_write_mask = self.stencil_write_mask;
+
+        if let Some(blending) = self.blending {
+            pipeline.blend_source = blending.source.into_raw();
+            pipeline.blend_destination = blending.destination.into_raw();
+            pipeline.blend_operation = blending.operation.into_raw();
+        }
+
+        if let Some(blending) = self.alpha_blending {
+            pipeline.alpha_blend_source = blending.source.into_raw();
+            pipeline.alpha_blend_destination = blending.destination.into_raw();
+            pipeline.alpha_blend_operation = blending.operation.into_raw();
+        }
+
+        pipeline.color_attachment_count = self.color_attachments.len() as i32;
+        for (i, color_attachment) in self.color_attachments.iter().enumerate() {
+            pipeline.color_write_mask_red[i] = color_attachment.write_red;
+            pipeline.color_write_mask_green[i] = color_attachment.write_green;
+            pipeline.color_write_mask_blue[i] = color_attachment.write_blue;
+            pipeline.color_write_mask_alpha[i] = color_attachment.write_alpha;
+            pipeline.color_attachment[i] = color_attachment.format.into_raw();
+        }
+        pipeline.depth_attachment_bits = self.depth_attachment_bits;
+        pipeline.stencil_attachment_bits = self.stencil_attachment_bits;
+        pipeline.conservative_rasterization = self.conservative_rasterization;
         unsafe {
-            let mut pipeline: kinc_g4_pipeline_t = core::mem::zeroed();
-            kinc_g4_pipeline_init(&mut pipeline as *mut kinc_g4_pipeline_t);
-            for (i, vertex_structure) in self.input_layout.iter().enumerate() {
-                if i < 16 {
-                    pipeline.input_layout[i] = &vertex_structure.vertex_structure
-                        as *const kinc_g4_vertex_structure_t
-                        as *mut kinc_g4_vertex_structure_t;
-                }
-            }
-
-            pipeline.vertex_shader = self.vertex_shader.get_raw();
-            pipeline.fragment_shader = self.fragment_shader.get_raw();
-            pipeline.geometry_shader = self.geometry_shader.get_raw();
-            pipeline.tessellation_control_shader = self.tessellation_control_shader.get_raw();
-            pipeline.tessellation_evaluation_shader = self.tessellation_evaluation_shader.get_raw();
-            pipeline.cull_mode = self.cull_mode.into_raw();
-
-            if let Some(depth_mode) = self.depth_mode {
-                pipeline.depth_write = true;
-                pipeline.depth_mode = depth_mode.into_raw();
-            }
-
-            if let Some(s) = self.front_stencil {
-                pipeline.stencil_front_mode = s.mode.into_raw();
-                pipeline.stencil_front_both_pass = s.both_pass.into_raw();
-                pipeline.stencil_front_depth_fail = s.depth_fail.into_raw();
-                pipeline.stencil_front_fail = s.fail.into_raw();
-            }
-
-            if let Some(s) = self.back_stencil {
-                pipeline.stencil_back_mode = s.mode.into_raw();
-                pipeline.stencil_back_both_pass = s.both_pass.into_raw();
-                pipeline.stencil_back_depth_fail = s.depth_fail.into_raw();
-                pipeline.stencil_back_fail = s.fail.into_raw();
-            }
-
-            pipeline.stencil_reference_value = self.stencil_reference_value;
-            pipeline.stencil_read_mask = self.stencil_read_mask;
-            pipeline.stencil_write_mask = self.stencil_write_mask;
-
-            if let Some(blending) = self.blending {
-                pipeline.blend_source = blending.source.into_raw();
-                pipeline.blend_destination = blending.destination.into_raw();
-                pipeline.blend_operation = blending.operation.into_raw();
-            }
-
-            if let Some(blending) = self.alpha_blending {
-                pipeline.alpha_blend_source = blending.source.into_raw();
-                pipeline.alpha_blend_destination = blending.destination.into_raw();
-                pipeline.alpha_blend_operation = blending.operation.into_raw();
-            }
-
-            pipeline.color_attachment_count = self.color_attachments.len() as i32;
-            for (i, color_attachment) in self.color_attachments.iter().enumerate() {
-                pipeline.color_write_mask_red[i] = color_attachment.write_red;
-                pipeline.color_write_mask_green[i] = color_attachment.write_green;
-                pipeline.color_write_mask_blue[i] = color_attachment.write_blue;
-                pipeline.color_write_mask_alpha[i] = color_attachment.write_alpha;
-                pipeline.color_attachment[i] = color_attachment.format.into_raw();
-            }
-            pipeline.depth_attachment_bits = self.depth_attachment_bits;
-            pipeline.stencil_attachment_bits = self.stencil_attachment_bits;
-            pipeline.conservative_rasterization = self.conservative_rasterization;
-
             kinc_g4_pipeline_compile(&mut pipeline as *mut kinc_g4_pipeline_t);
+        }
 
-            Pipeline { pipeline }
+        Pipeline {
+            pipeline: UnsafeCell::new(pipeline),
         }
     }
 }
@@ -976,10 +995,11 @@ impl<'a> PipelineBuilder<'a> {
 #[derive(Debug)]
 pub struct SwapBufferError;
 
-impl std::fmt::Display for SwapBufferError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for SwapBufferError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "swap_buffers failed")
     }
 }
 
+#[cfg(std)]
 impl std::error::Error for SwapBufferError {}

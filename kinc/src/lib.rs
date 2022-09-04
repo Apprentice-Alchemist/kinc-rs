@@ -1,9 +1,13 @@
+#![no_std]
 #![warn(clippy::missing_safety_doc)]
+
+extern crate alloc;
+
 pub mod g4;
 mod sys;
 
-use std::{borrow::BorrowMut, cell::RefCell, ffi::CString};
-
+use alloc::boxed::Box;
+use core::{borrow::BorrowMut, cell::RefCell};
 use g4::Graphics4;
 
 pub use krafix::compile_shader as krafix_compile;
@@ -57,7 +61,7 @@ where
     fn get_raw(&self) -> *mut N {
         match self {
             Some(x) => x.get_raw(),
-            None => std::ptr::null_mut(),
+            None => core::ptr::null_mut(),
         }
     }
 }
@@ -172,7 +176,7 @@ impl<'a> WindowOptions<'a> {
 impl IntoRaw<kinc_window_options> for WindowOptions<'_> {
     fn into_raw(self) -> kinc_window_options {
         kinc_window_options {
-            title: self.title.as_ptr() as *const ::std::os::raw::c_char,
+            title: self.title.as_ptr().cast(),
             x: self.x,
             y: self.y,
             width: self.width,
@@ -292,31 +296,28 @@ impl<'a> KincBuilder<'a> {
     }
 
     pub fn build(self) -> (Kinc, Window) {
-        let name = CString::new(self.name).unwrap();
+        // let name = CString::new(self.name).unwrap();
+        let mut name = alloc::vec![0u8; self.name.len() + 1];
+        name[..self.name.len()].copy_from_slice(self.name.as_bytes());
         // Safety: name is valid and lives long enough to be used in the kinc_init call
         // The window_options and framebuffer_options are either null or valid and live long enough to be used in the kinc_init call
         unsafe {
             kinc_init(
-                name.as_ptr(),
+                name.as_ptr().cast(),
                 self.width,
                 self.height,
                 match self.window_options {
-                    None => std::ptr::null_mut(),
+                    None => core::ptr::null_mut(),
                     Some(options) => &mut options.into_raw() as *mut kinc_window_options,
                 },
                 match self.framebuffer_options {
-                    None => std::ptr::null_mut(),
+                    None => core::ptr::null_mut(),
                     Some(options) => &mut options.into_raw() as *mut kinc_framebuffer_options,
                 },
             );
         }
 
-        (
-            Kinc {
-                // update_callback: self.update_callback,
-            },
-            Window { window: 0 },
-        )
+        (Kinc, Window { window: 0 })
     }
 }
 

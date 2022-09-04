@@ -24,6 +24,7 @@ impl<'a> Callbacks for Shader {
             pass.set_index_buffer(&self.index_buffer);
             pass.set_pipeline(&self.pipeline);
             pass.draw_indexed_vertices();
+            pass.end();
         }
 
         g4.swap_buffers().unwrap();

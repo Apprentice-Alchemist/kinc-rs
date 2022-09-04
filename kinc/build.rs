@@ -312,6 +312,8 @@ fn main() {
                 .chain(defines.iter().flat_map(|d| ["-D", d])),
         )
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .use_core()
+        .ctypes_prefix("::core::ffi")
         .generate()
         .expect("Unable to generate bindings");
 
