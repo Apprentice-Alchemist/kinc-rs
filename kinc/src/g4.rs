@@ -15,7 +15,7 @@ use core::{
 
 use alloc::vec::Vec;
 
-use crate::{sys::*, GetRaw, IntoRaw, Window};
+use crate::{sys::*, GetRaw, Window};
 
 pub struct RenderPass<'a> {
     window: &'a Window,
@@ -95,8 +95,8 @@ pub enum Usage {
     Readable,
 }
 
-impl IntoRaw<kinc_g4_usage_t> for Usage {
-    fn into_raw(self) -> kinc_g4_usage_t {
+impl Into<kinc_g4_usage_t> for Usage {
+    fn into(self) -> kinc_g4_usage_t {
         match self {
             Self::Static => kinc_g4_usage_KINC_G4_USAGE_STATIC,
             Self::Dynamic => kinc_g4_usage_KINC_G4_USAGE_DYNAMIC,
@@ -170,8 +170,8 @@ impl VertexData {
     }
 }
 
-impl IntoRaw<kinc_g4_vertex_data_t> for VertexData {
-    fn into_raw(self) -> kinc_g4_vertex_data_t {
+impl Into<kinc_g4_vertex_data_t> for VertexData {
+    fn into(self) -> kinc_g4_vertex_data_t {
         match self {
             Self::None => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_NONE,
             Self::F32_1X => kinc_g4_vertex_data_KINC_G4_VERTEX_DATA_F32_1X,
@@ -251,7 +251,7 @@ impl<'a> VertexStructureBuilder<'a> {
                 kinc_g4_vertex_structure_add(
                     vertex_structure.get_raw(),
                     name.as_ptr(),
-                    element.data.into_raw(),
+                    element.data.into(),
                 );
             }
             vertex_structure.vertex_structure.get_mut().instanced = self.instanced;
@@ -337,53 +337,60 @@ impl<T> Drop for VertexLockResult<'_, T> {
 
 impl VertexBuffer {
     pub fn new(desc: VertexBufferDesc) -> Self {
-        let mut vertex_buffer = unsafe {
+        // Safety: usage of zeroed() + the kinc init function should be sufficient to initialize the vertex buffer
+        let vertex_buffer = unsafe {
             let mut vb: MaybeUninit<kinc_g4_vertex_buffer> = MaybeUninit::zeroed();
             kinc_g4_vertex_buffer_init(
                 vb.as_mut_ptr(),
                 desc.count,
                 desc.vertex_structure.get_raw(),
-                desc.usage.into_raw(),
+                desc.usage.into(),
                 desc.instance_data_step_rate,
             );
-            // usage of zeroed() + the kinc init function should be sufficient to initialize the vertex buffer
             vb.assume_init()
         };
-        let this = Self {
+        let mut this = Self {
             vertex_buffer: UnsafeCell::new(vertex_buffer),
         };
         // This is only needed because otherwise the GL backend will throw errors when settings the vertex buffer.
         // A potential alternative would be to keep track of wether the buffer has been locked and unlocked on the Rust side,
         // and panic if it is not.
         // But that would make things even more complicated...
-        this.lock(0, desc.count)
-            .deref_mut()
-            .iter_mut()
-            .for_each(|x| *x = 0.0);
+        drop(this.lock::<f32>(0, desc.count));
 
         this
     }
 
     pub fn count(&self) -> i32 {
+        // Safety: self.get_raw gives a valid pointer
         unsafe { kinc_g4_vertex_buffer_count(self.get_raw()) }
     }
 
     pub fn stride(&self) -> i32 {
+        // Safety: self.get_raw gives a valid pointer
         unsafe { kinc_g4_vertex_buffer_stride(self.get_raw()) }
     }
 
-    pub fn lock<T>(&self, start: i32, count: i32) -> VertexLockResult<T> {
-        unsafe {
-            let ptr = kinc_g4_vertex_buffer_lock(self.get_raw(), start, count);
-            VertexLockResult {
-                data: ptr.cast(),
-                count,
-                vertex_buffer: self,
-            }
+    /// # Panics
+    /// If `start < 0` or `start > self.count()`
+    /// or if `count <= 0` or `count > self.count`
+    /// or if `start + count >= self.count()`
+    pub fn lock<T>(&mut self, start: i32, count: i32) -> VertexLockResult<T> {
+        assert!(start >= 0);
+        assert!(start < self.count());
+        assert!(count > 0);
+        assert!(count <= self.count());
+        assert!(start + count <= self.count());
+        // Safety: self.get_raw gives a valid pointer, and kinc_g4_vertex_buffer_lock *should* return a valid pointer, given the conditions asserted above
+        let ptr = unsafe { kinc_g4_vertex_buffer_lock(self.get_raw(), start, count) };
+        VertexLockResult {
+            data: ptr.cast(),
+            count,
+            vertex_buffer: self,
         }
     }
 
-    pub fn lock_all<T>(&self) -> VertexLockResult<T> {
+    pub fn lock_all<T>(&mut self) -> VertexLockResult<T> {
         self.lock(0, self.count())
     }
 }
@@ -440,8 +447,8 @@ pub enum IndexBufferFormat {
     U32,
 }
 
-impl IntoRaw<kinc_g4_index_buffer_format_t> for IndexBufferFormat {
-    fn into_raw(self) -> kinc_g4_index_buffer_format_t {
+impl Into<kinc_g4_index_buffer_format_t> for IndexBufferFormat {
+    fn into(self) -> kinc_g4_index_buffer_format_t {
         match self {
             IndexBufferFormat::U16 => kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_16BIT,
             IndexBufferFormat::U32 => kinc_g4_index_buffer_format_KINC_G4_INDEX_BUFFER_FORMAT_32BIT,
@@ -460,8 +467,8 @@ impl IndexBuffer {
             kinc_g4_index_buffer_init(
                 index_buffer.as_mut_ptr(),
                 count,
-                format.into_raw(),
-                usage.into_raw(),
+                format.into(),
+                usage.into(),
             );
             Self {
                 index_buffer: UnsafeCell::new(index_buffer.assume_init()),
@@ -474,13 +481,11 @@ impl IndexBuffer {
     }
 
     pub fn lock<T: ValidIndexFormat>(&self) -> IndexLockResult<'_, T> {
-        unsafe {
-            let ptr = kinc_g4_index_buffer_lock(self.get_raw());
-            IndexLockResult {
-                data: ptr.cast(),
-                count: self.count(),
-                index_buffer: self,
-            }
+        let ptr = unsafe { kinc_g4_index_buffer_lock(self.get_raw()) };
+        IndexLockResult {
+            data: ptr.cast(),
+            count: self.count(),
+            index_buffer: self,
         }
     }
 }
@@ -518,8 +523,8 @@ pub enum ShaderType {
     TessellationEvaluation,
 }
 
-impl IntoRaw<kinc_g4_shader_type_t> for ShaderType {
-    fn into_raw(self) -> kinc_g4_shader_type_t {
+impl Into<kinc_g4_shader_type_t> for ShaderType {
+    fn into(self) -> kinc_g4_shader_type_t {
         match self {
             ShaderType::Vertex => kinc_g4_shader_type_KINC_G4_SHADER_TYPE_VERTEX,
             ShaderType::Fragment => kinc_g4_shader_type_KINC_G4_SHADER_TYPE_FRAGMENT,
@@ -544,9 +549,10 @@ impl Shader {
             let mut shader = MaybeUninit::zeroed();
             kinc_g4_shader_init(
                 shader.as_mut_ptr(),
+                // kinc_g4_shader_init will not mutate the source passed to it (hopefully).
                 code.as_ptr().cast::<c_void>() as *mut _,
                 code.len() as size_t,
-                t.into_raw(),
+                t.into(),
             );
             Self {
                 shader: UnsafeCell::new(shader.assume_init()),
@@ -572,8 +578,8 @@ pub enum RenderTargetFormat {
     F16Red,
 }
 
-impl IntoRaw<kinc_g4_render_target_format_t> for RenderTargetFormat {
-    fn into_raw(self) -> kinc_g4_render_target_format_t {
+impl Into<kinc_g4_render_target_format_t> for RenderTargetFormat {
+    fn into(self) -> kinc_g4_render_target_format_t {
         match self {
             RenderTargetFormat::I32 => {
                 kinc_g4_render_target_format_KINC_G4_RENDER_TARGET_FORMAT_32BIT
@@ -615,7 +621,7 @@ pub enum BlendingFactor {
 }
 
 impl BlendingFactor {
-    fn into_raw(self) -> kinc_g4_blending_factor_t {
+    fn into(self) -> kinc_g4_blending_factor_t {
         match self {
             BlendingFactor::One => kinc_g4_blending_factor_t_KINC_G4_BLEND_ONE,
             BlendingFactor::Zero => kinc_g4_blending_factor_t_KINC_G4_BLEND_ZERO,
@@ -644,8 +650,8 @@ pub enum BlendingOperation {
     Max,
 }
 
-impl crate::IntoRaw<kinc_g4_blending_operation_t> for BlendingOperation {
-    fn into_raw(self) -> kinc_g4_blending_operation_t {
+impl Into<kinc_g4_blending_operation_t> for BlendingOperation {
+    fn into(self) -> kinc_g4_blending_operation_t {
         match self {
             BlendingOperation::Add => kinc_g4_blending_operation_t_KINC_G4_BLENDOP_ADD,
             BlendingOperation::Subtract => kinc_g4_blending_operation_t_KINC_G4_BLENDOP_SUBTRACT,
@@ -670,8 +676,8 @@ pub enum CompareMode {
     GreaterEqual,
 }
 
-impl crate::IntoRaw<kinc_g4_compare_mode_t> for CompareMode {
-    fn into_raw(self) -> kinc_g4_compare_mode_t {
+impl Into<kinc_g4_compare_mode_t> for CompareMode {
+    fn into(self) -> kinc_g4_compare_mode_t {
         match self {
             CompareMode::Always => kinc_g4_compare_mode_t_KINC_G4_COMPARE_ALWAYS,
             CompareMode::Never => kinc_g4_compare_mode_t_KINC_G4_COMPARE_NEVER,
@@ -693,7 +699,7 @@ pub enum CullMode {
 }
 
 impl CullMode {
-    fn into_raw(self) -> kinc_g4_cull_mode_t {
+    fn into(self) -> kinc_g4_cull_mode_t {
         match self {
             CullMode::Clockwise => kinc_g4_cull_mode_t_KINC_G4_CULL_CLOCKWISE,
             CullMode::CounterClockwise => kinc_g4_cull_mode_t_KINC_G4_CULL_COUNTER_CLOCKWISE,
@@ -715,7 +721,7 @@ pub enum StencilAction {
 }
 
 impl StencilAction {
-    fn into_raw(self) -> kinc_g4_stencil_action_t {
+    fn into(self) -> kinc_g4_stencil_action_t {
         match self {
             StencilAction::Keep => kinc_g4_stencil_action_t_KINC_G4_STENCIL_KEEP,
             StencilAction::Zero => kinc_g4_stencil_action_t_KINC_G4_STENCIL_ZERO,
@@ -934,25 +940,25 @@ impl<'a> PipelineBuilder<'a> {
         pipeline.geometry_shader = self.geometry_shader.get_raw();
         pipeline.tessellation_control_shader = self.tessellation_control_shader.get_raw();
         pipeline.tessellation_evaluation_shader = self.tessellation_evaluation_shader.get_raw();
-        pipeline.cull_mode = self.cull_mode.into_raw();
+        pipeline.cull_mode = self.cull_mode.into();
 
         if let Some(depth_mode) = self.depth_mode {
             pipeline.depth_write = true;
-            pipeline.depth_mode = depth_mode.into_raw();
+            pipeline.depth_mode = depth_mode.into();
         }
 
         if let Some(s) = self.front_stencil {
-            pipeline.stencil_front_mode = s.mode.into_raw();
-            pipeline.stencil_front_both_pass = s.both_pass.into_raw();
-            pipeline.stencil_front_depth_fail = s.depth_fail.into_raw();
-            pipeline.stencil_front_fail = s.fail.into_raw();
+            pipeline.stencil_front_mode = s.mode.into();
+            pipeline.stencil_front_both_pass = s.both_pass.into();
+            pipeline.stencil_front_depth_fail = s.depth_fail.into();
+            pipeline.stencil_front_fail = s.fail.into();
         }
 
         if let Some(s) = self.back_stencil {
-            pipeline.stencil_back_mode = s.mode.into_raw();
-            pipeline.stencil_back_both_pass = s.both_pass.into_raw();
-            pipeline.stencil_back_depth_fail = s.depth_fail.into_raw();
-            pipeline.stencil_back_fail = s.fail.into_raw();
+            pipeline.stencil_back_mode = s.mode.into();
+            pipeline.stencil_back_both_pass = s.both_pass.into();
+            pipeline.stencil_back_depth_fail = s.depth_fail.into();
+            pipeline.stencil_back_fail = s.fail.into();
         }
 
         pipeline.stencil_reference_value = self.stencil_reference_value;
@@ -960,15 +966,15 @@ impl<'a> PipelineBuilder<'a> {
         pipeline.stencil_write_mask = self.stencil_write_mask;
 
         if let Some(blending) = self.blending {
-            pipeline.blend_source = blending.source.into_raw();
-            pipeline.blend_destination = blending.destination.into_raw();
-            pipeline.blend_operation = blending.operation.into_raw();
+            pipeline.blend_source = blending.source.into();
+            pipeline.blend_destination = blending.destination.into();
+            pipeline.blend_operation = blending.operation.into();
         }
 
         if let Some(blending) = self.alpha_blending {
-            pipeline.alpha_blend_source = blending.source.into_raw();
-            pipeline.alpha_blend_destination = blending.destination.into_raw();
-            pipeline.alpha_blend_operation = blending.operation.into_raw();
+            pipeline.alpha_blend_source = blending.source.into();
+            pipeline.alpha_blend_destination = blending.destination.into();
+            pipeline.alpha_blend_operation = blending.operation.into();
         }
 
         pipeline.color_attachment_count = self.color_attachments.len() as i32;
@@ -977,7 +983,7 @@ impl<'a> PipelineBuilder<'a> {
             pipeline.color_write_mask_green[i] = color_attachment.write_green;
             pipeline.color_write_mask_blue[i] = color_attachment.write_blue;
             pipeline.color_write_mask_alpha[i] = color_attachment.write_alpha;
-            pipeline.color_attachment[i] = color_attachment.format.into_raw();
+            pipeline.color_attachment[i] = color_attachment.format.into();
         }
         pipeline.depth_attachment_bits = self.depth_attachment_bits;
         pipeline.stencil_attachment_bits = self.stencil_attachment_bits;

@@ -1,5 +1,7 @@
 #![no_std]
+#![allow(clippy::from_over_into)]
 #![warn(clippy::missing_safety_doc)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 extern crate alloc;
 
@@ -64,10 +66,6 @@ where
             None => core::ptr::null_mut(),
         }
     }
-}
-
-trait IntoRaw<T> {
-    fn into_raw(self) -> T;
 }
 
 bitflags::bitflags! {
@@ -173,8 +171,8 @@ impl<'a> WindowOptions<'a> {
     }
 }
 
-impl IntoRaw<kinc_window_options> for WindowOptions<'_> {
-    fn into_raw(self) -> kinc_window_options {
+impl Into<kinc_window_options> for WindowOptions<'_> {
+    fn into(self) -> kinc_window_options {
         kinc_window_options {
             title: self.title.as_ptr().cast(),
             x: self.x,
@@ -205,8 +203,8 @@ pub struct FramebufferOptions {
     pub samples_per_pixel: i32,
 }
 
-impl IntoRaw<kinc_framebuffer_options> for FramebufferOptions {
-    fn into_raw(self) -> kinc_framebuffer_options {
+impl Into<kinc_framebuffer_options> for FramebufferOptions {
+    fn into(self) -> kinc_framebuffer_options {
         kinc_framebuffer_options {
             frequency: self.frequency,
             vertical_sync: self.vertical_sync,
@@ -296,7 +294,6 @@ impl<'a> KincBuilder<'a> {
     }
 
     pub fn build(self) -> (Kinc, Window) {
-        // let name = CString::new(self.name).unwrap();
         let mut name = alloc::vec![0u8; self.name.len() + 1];
         name[..self.name.len()].copy_from_slice(self.name.as_bytes());
         // Safety: name is valid and lives long enough to be used in the kinc_init call
@@ -308,11 +305,11 @@ impl<'a> KincBuilder<'a> {
                 self.height,
                 match self.window_options {
                     None => core::ptr::null_mut(),
-                    Some(options) => &mut options.into_raw() as *mut kinc_window_options,
+                    Some(options) => &mut options.into() as *mut kinc_window_options,
                 },
                 match self.framebuffer_options {
                     None => core::ptr::null_mut(),
-                    Some(options) => &mut options.into_raw() as *mut kinc_framebuffer_options,
+                    Some(options) => &mut options.into() as *mut kinc_framebuffer_options,
                 },
             );
         }

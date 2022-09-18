@@ -13,7 +13,7 @@ struct Shader {
     index_buffer: IndexBuffer,
 }
 
-impl<'a> Callbacks for Shader {
+impl Callbacks for Shader {
     fn update(&mut self, kinc: &mut Kinc) {
         let mut g4 = kinc.g4();
         let window = kinc.default_window();
@@ -69,7 +69,7 @@ void main() {
     )
     .build();
 
-    let vertex_buffer = VertexBuffer::new(VertexBufferDesc {
+    let mut vertex_buffer = VertexBuffer::new(VertexBufferDesc {
         count: 3,
         vertex_structure,
         usage: kinc::g4::Usage::Static,
