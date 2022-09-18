@@ -1,8 +1,10 @@
 #![allow(clippy::upper_case_acronyms)]
 
-use std::env;
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::mem::ManuallyDrop;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::{env, fs};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 enum GraphicsApi {
@@ -81,7 +83,13 @@ fn main() {
     let mut include_paths = vec!["Kinc/Sources"];
     let mut defines = vec!["KINC_NO_MAIN", "KORE_LZ4X"];
     let mut libs = vec![];
-    let mut files = vec![
+    let mut files = Vec::new();
+
+    fn add(v: &mut Vec<String>, f: impl ToString) {
+        v.push(f.to_string());
+    }
+
+    for f in [
         "Kinc/Sources/kinc/rootunit.c",
         "Kinc/Sources/kinc/audio1/a1unit.c",
         "Kinc/Sources/kinc/audio2/audio.c",
@@ -91,7 +99,9 @@ fn main() {
         "Kinc/Sources/kinc/io/iounit.c",
         "Kinc/Sources/kinc/math/mathunit.c",
         "Kinc/Sources/kinc/network/networkunit.c",
-    ];
+    ] {
+        add(&mut files, f);
+    }
 
     let target_os = match env::var("CARGO_CFG_TARGET_OS")
         .unwrap()
@@ -111,16 +121,28 @@ fn main() {
 
     if env::var("CARGO_CFG_UNIX").is_ok() {
         include_paths.push("Kinc/Backends/System/POSIX/Sources");
-        files.push("Kinc/Backends/System/POSIX/Sources/kinc/backend/posixunit.c");
+        add(
+            &mut files,
+            "Kinc/Backends/System/POSIX/Sources/kinc/backend/posixunit.c",
+        );
     }
 
     match target_os {
         TargetOS::Windows => {
             include_paths.push("Kinc/Backends/System/Microsoft/Sources");
-            files.push("Kinc/Backends/System/Microsoft/Sources/kinc/backend/microsoftunit.c");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Microsoft/Sources/kinc/backend/microsoftunit.c",
+            );
             include_paths.push("Kinc/Backends/System/Windows/Sources");
-            files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowsunit.c");
-            files.push("Kinc/Backends/System/Windows/Sources/kinc/backend/windowscppunit.cpp");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Windows/Sources/kinc/backend/windowsunit.c",
+            );
+            add(
+                &mut files,
+                "Kinc/Backends/System/Windows/Sources/kinc/backend/windowscppunit.cpp",
+            );
             libs.extend([
                 "dxguid", "dsound", "dinput8", "ws2_32", "Winhttp", "wbemuuid", "kernel32",
                 "user32", "gdi32", "comdlg32", "advapi32", "shell32", "ole32", "oleaut32", "uuid",
@@ -132,19 +154,85 @@ fn main() {
                 "KINC_NO_DIRECTSHOW",
             ]);
 
-            files.push("Kinc/Backends/Audio2/WASAPI/Sources/kinc/backend/wasapi.c");
+            add(
+                &mut files,
+                "Kinc/Backends/Audio2/WASAPI/Sources/kinc/backend/wasapi.c",
+            );
         }
         TargetOS::Linux => {
             include_paths.push("Kinc/Backends/System/Linux/Sources");
-            defines.push("KINC_NO_WAYLAND");
-            files.push("Kinc/Backends/System/Linux/Sources/kinc/backend/linuxunit.c");
+            let wayland_dir = Path::new(&env::var("OUT_DIR").unwrap()).join("wayland");
+            {
+                // TODO: this is stupid
+                let s = wayland_dir.display().to_string();
+                let s = Box::leak(Box::new(s));
+                include_paths.push(s.as_str());
+            }
+            let wayland_dir = wayland_dir.join("wayland-generated");
+            fs::create_dir_all(&wayland_dir).unwrap();
+
+            let mut cmd = Command::new("wayland-scanner");
+            cmd.arg("private-code");
+            cmd.arg("/usr/share/wayland/wayland.xml");
+            let cfile = wayland_dir.join("wayland.c").display().to_string();
+            cmd.arg(&cfile);
+            assert!(cmd.status().unwrap().success());
+            add(&mut files, cfile);
+            let mut cmd = Command::new("wayland-scanner");
+            cmd.arg("client-header");
+            cmd.arg("/usr/share/wayland/wayland.xml");
+            cmd.arg(wayland_dir.join("wayland.h").to_str().unwrap());
+            assert!(cmd.status().unwrap().success());
+            for (protocol, file) in [
+                ("stable/viewporter/viewporter.xml", "wayland-viewporter"),
+                ("stable/xdg-shell/xdg-shell.xml", "xdg-shell"),
+                (
+                    "unstable/xdg-decoration/xdg-decoration-unstable-v1.xml",
+                    "xdg-decoration",
+                ),
+                ("unstable/tablet/tablet-unstable-v2.xml", "wayland-tablet"),
+                (
+                    "unstable/pointer-constraints/pointer-constraints-unstable-v1.xml",
+                    "wayland-pointer-constraint",
+                ),
+                (
+                    "unstable/relative-pointer/relative-pointer-unstable-v1.xml",
+                    "wayland-relative-pointer",
+                ),
+            ] {
+                let protocol_path = Path::new("/usr/share/wayland-protocols").join(protocol);
+                let mut cmd = Command::new("wayland-scanner");
+                cmd.arg("private-code");
+                cmd.arg(protocol_path.to_str().unwrap());
+                let cfile = wayland_dir.join(file.to_string() + ".c");
+                let cfile = cfile.display().to_string();
+                cmd.arg(&cfile);
+                assert!(cmd.status().unwrap().success());
+                add(&mut files, cfile);
+                let mut cmd = Command::new("wayland-scanner");
+                cmd.arg("client-header");
+                cmd.arg(protocol_path.to_str().unwrap());
+                cmd.arg(wayland_dir.join(file.to_string() + ".h").to_str().unwrap());
+                assert!(cmd.status().unwrap().success());
+            }
+
+            add(
+                &mut files,
+                "Kinc/Backends/System/Linux/Sources/kinc/backend/linuxunit.c",
+            );
             libs.extend(["asound", "dl", "udev"]);
         }
         TargetOS::MacOS => {
             include_paths.push("Kinc/Backends/System/Apple/Sources");
-            files.push("Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m",
+            );
             include_paths.push("Kinc/Backends/System/MacOS/Sources");
-            files.push("Kinc/Backends/System/macOS/Sources/kinc/backend/macosunit.m");
+            add(
+                &mut files,
+                "Kinc/Backends/System/macOS/Sources/kinc/backend/macosunit.m",
+            );
             libs.push("framework=IOKit");
             libs.push("framework=Cocoa");
             libs.push("framework=AppKit");
@@ -157,12 +245,18 @@ fn main() {
         }
         TargetOS::IOS | TargetOS::TVOS => {
             include_paths.push("Kinc/Backends/System/Apple/Sources");
-            files.push("Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Apple/Sources/kinc/backend/appleunit.m",
+            );
             if target_os == TargetOS::TVOS {
                 defines.push("KORE_TVOS");
             }
             include_paths.push("Kinc/Backends/System/iOS/Sources");
-            files.push("Kinc/Backends/System/iOS/Sources/kinc/backend/iosunit.m");
+            add(
+                &mut files,
+                "Kinc/Backends/System/iOS/Sources/kinc/backend/iosunit.m",
+            );
             libs.push("framework=UIKit");
             libs.push("framework=Foundation");
             libs.push("framework=CoreGraphics");
@@ -177,7 +271,10 @@ fn main() {
         }
         TargetOS::Android => {
             include_paths.push("Kinc/Backends/System/Android/Sources");
-            files.push("Kinc/Backends/System/Android/Sources/kinc/backend/androidunit.c");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Android/Sources/kinc/backend/androidunit.c",
+            );
             libs.push("log");
             libs.push("android");
             libs.push("EGL");
@@ -188,7 +285,10 @@ fn main() {
         TargetOS::Web => {
             defines.push("KORE_HTML5");
             include_paths.push("Kinc/Backends/System/HTML5/Sources");
-            files.push("Kinc/Backends/System/Web/Sources/kinc/backend/webunit.c");
+            add(
+                &mut files,
+                "Kinc/Backends/System/Web/Sources/kinc/backend/webunit.c",
+            );
         }
     }
 
@@ -220,24 +320,35 @@ fn main() {
         defines.push("KORE_G4");
         defines.push("KORE_G5ONG4");
         include_paths.push("Kinc/Backends/Graphics5/G5onG4/Sources");
-        files.push("Kinc/Backends/Graphics5/G5onG4/Sources/kinc/backend/graphics5/g5ong4unit.c");
+        add(
+            &mut files,
+            "Kinc/Backends/Graphics5/G5onG4/Sources/kinc/backend/graphics5/g5ong4unit.c",
+        );
     } else {
         defines.push("KORE_G5");
         defines.push("KORE_G4ONG5");
         include_paths.push("Kinc/Backends/Graphics4/G4onG5/Sources");
-        files.push("Kinc/Backends/Graphics4/G4onG5/Sources/kinc/backend/graphics4/g4ong5unit.c");
+        add(
+            &mut files,
+            "Kinc/Backends/Graphics4/G4onG5/Sources/kinc/backend/graphics4/g4ong5unit.c",
+        );
     }
 
     match graphics {
         GraphicsApi::OpenGL => {
             include_paths.push("Kinc/Backends/Graphics4/OpenGL/Sources");
             defines.push("KORE_OPENGL");
-            files
-                .push("Kinc/Backends/Graphics4/OpenGL/Sources/kinc/backend/graphics4/openglunit.c");
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics4/OpenGL/Sources/kinc/backend/graphics4/openglunit.c",
+            );
             match target_os {
                 TargetOS::Windows => {
                     defines.push("GLEW_STATIC");
-                    files.push("Kinc/Backends/Graphics4/OpenGL/Sources/GL/glew.c");
+                    add(
+                        &mut files,
+                        "Kinc/Backends/Graphics4/OpenGL/Sources/GL/glew.c",
+                    );
                     libs.push("opengl32");
                 }
                 TargetOS::Linux => {
@@ -264,9 +375,14 @@ fn main() {
         GraphicsApi::Vulkan => {
             include_paths.push("Kinc/Backends/Graphics5/Vulkan/Sources");
             defines.push("KORE_VULKAN");
-            files.push("Kinc/Backends/Graphics5/Vulkan/Sources/kinc/backend/compute.c");
-            files
-                .push("Kinc/Backends/Graphics5/Vulkan/Sources/kinc/backend/graphics5/vulkanunit.c");
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics5/Vulkan/Sources/kinc/backend/compute.c",
+            );
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics5/Vulkan/Sources/kinc/backend/graphics5/vulkanunit.c",
+            );
             libs.push("vulkan");
             if target_os == TargetOS::Android {
                 defines.push("VK_USE_PLATFORM_ANDROID_KHR");
@@ -276,8 +392,12 @@ fn main() {
             include_paths.push("Kinc/Backends/Graphics4/Direct3D11/Sources");
             defines.push("KORE_D3D11");
             defines.push("KORE_D3D");
-            files.push("Kinc/Backends/Graphics4/Direct3D11/Sources/kinc/backend/compute.c");
-            files.push(
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics4/Direct3D11/Sources/kinc/backend/compute.c",
+            );
+            add(
+                &mut files,
                 "Kinc/Backends/Graphics4/Direct3D11/Sources/kinc/backend/graphics4/d3d11unit.c",
             );
             libs.push("d3d11");
@@ -286,7 +406,8 @@ fn main() {
             include_paths.push("Kinc/Backends/Graphics5/Direct3D12/Sources");
             defines.push("KORE_D3D12");
             defines.push("KORE_D3D");
-            files.push(
+            add(
+                &mut files,
                 "Kinc/Backends/Graphics5/Direct3D12/Sources/kinc/backend/graphics5/d3d12unit.c",
             );
             libs.extend(["dxgi", "d3d12"]);
@@ -294,8 +415,14 @@ fn main() {
         GraphicsApi::Metal => {
             include_paths.push("Kinc/Backends/Graphics5/Metal/Sources");
             defines.push("KORE_METAL");
-            files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/compute.m");
-            files.push("Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/graphics5/metalunit.m");
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/compute.m",
+            );
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics5/Metal/Sources/kinc/backend/graphics5/metalunit.m",
+            );
             libs.push("framework=Metal");
             if target_os == TargetOS::MacOS {
                 libs.push("framework=MetalKit");
