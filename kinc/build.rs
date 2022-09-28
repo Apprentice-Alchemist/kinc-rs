@@ -409,7 +409,7 @@ fn main() {
             defines.push("KORE_D3D");
             add(
                 &mut files,
-                "Kinc/Backends/Graphics5/Direct3D12/Sources/kinc/backend/graphics5/d3d12unit.c",
+                "Kinc/Backends/Graphics5/Direct3D12/Sources/kinc/backend/graphics5/d3d12unit.cpp",
             );
             libs.extend(["dxgi", "d3d12"]);
         }
