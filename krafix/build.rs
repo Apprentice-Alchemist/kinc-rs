@@ -104,6 +104,7 @@ fn main() {
     builder.extra_warnings(false);
     builder.cargo_metadata(true);
     builder.warnings(false);
-    // builder.flag_if_supported("-Wno-attributes");
+    builder.flag_if_supported("-Wno-deprecated");
+    builder.flag_if_supported("-Wno-enum-compare");
     builder.compile("krafix");
 }

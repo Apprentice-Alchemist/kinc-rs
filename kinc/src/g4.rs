@@ -6,14 +6,13 @@ bitflags::bitflags! {
         const ALL = Self::COLOR.bits | Self::DEPTH.bits | Self::STENCIL.bits;
     }
 }
+
 use core::{
     cell::UnsafeCell,
-    ffi::c_void,
+    ffi::{c_void, CStr},
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
-
-use alloc::vec::Vec;
 
 use crate::{sys::*, GetRaw, Window};
 
@@ -215,48 +214,41 @@ impl Into<kinc_g4_vertex_data_t> for VertexData {
     }
 }
 
-pub struct VertexElement<'a> {
-    name: &'a str,
-    data: VertexData,
+pub struct VertexStructureBuilder {
+    vertex_structure: VertexStructure,
 }
 
-#[derive(Default)]
-pub struct VertexStructureBuilder<'a> {
-    elements: Vec<VertexElement<'a>>,
-    instanced: bool,
+impl Default for VertexStructureBuilder {
+    fn default() -> Self {
+        Self {
+            vertex_structure: VertexStructure::new(),
+        }
+    }
 }
 
-impl<'a> VertexStructureBuilder<'a> {
+impl VertexStructureBuilder {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn add(mut self, name: &'a str, data: VertexData) -> Self {
-        self.elements.push(VertexElement { name, data });
+    pub fn add(mut self, name: &CStr, data: VertexData) -> Self {
+        unsafe {
+            kinc_g4_vertex_structure_add(
+                self.vertex_structure.vertex_structure.get_mut(),
+                name.as_ptr(),
+                data.into(),
+            )
+        }
         self
     }
 
     pub fn instanced(mut self, instanced: bool) -> Self {
-        self.instanced = instanced;
+        self.vertex_structure.vertex_structure.get_mut().instanced = instanced;
         self
     }
 
     pub fn build(self) -> VertexStructure {
-        unsafe {
-            let mut vertex_structure: VertexStructure = core::mem::zeroed();
-            kinc_g4_vertex_structure_init(vertex_structure.get_raw());
-            for element in self.elements.iter() {
-                let name = alloc::vec![0; element.name.len() + 1];
-
-                kinc_g4_vertex_structure_add(
-                    vertex_structure.get_raw(),
-                    name.as_ptr(),
-                    element.data.into(),
-                );
-            }
-            vertex_structure.vertex_structure.get_mut().instanced = self.instanced;
-            vertex_structure
-        }
+        self.vertex_structure
     }
 }
 
@@ -266,6 +258,17 @@ pub struct VertexStructure {
 }
 
 impl VertexStructure {
+    fn new() -> Self {
+        let struc = unsafe {
+            let mut struc = MaybeUninit::zeroed();
+            kinc_g4_vertex_structure_init(struc.as_mut_ptr());
+            struc.assume_init()
+        };
+        Self {
+            vertex_structure: UnsafeCell::new(struc),
+        }
+    }
+
     pub fn size(&self) -> i32 {
         unsafe { (*self.vertex_structure.get()).size }
     }
@@ -989,7 +992,7 @@ impl<'a> PipelineBuilder<'a> {
         pipeline.stencil_attachment_bits = self.stencil_attachment_bits;
         pipeline.conservative_rasterization = self.conservative_rasterization;
         unsafe {
-            kinc_g4_pipeline_compile(&mut pipeline as *mut kinc_g4_pipeline_t);
+            kinc_g4_pipeline_compile(&mut pipeline);
         }
 
         Pipeline {

@@ -43,7 +43,7 @@ jobs:
       - name: install rust stable
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.61.0
+          toolchain: stable
           target: ${{ matrix.target }}
           profile: minimal
           override: true
@@ -57,21 +57,11 @@ jobs:
           kinc/Kinc/get_dlc
           git -C krafix/krafix submodule update --init --depth 1
 
-      - name: Get LunarG package list.
-        if: matrix.graphics == 'vulkan'
+      - name: Install Ubuntu packages
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-bionic.list http://packages.lunarg.com/vulkan/lunarg-vulkan-bionic.list
-      - name: Apt Update
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update
-        continue-on-error: true
-      - name: Apt Install
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install libasound2-dev libxinerama-dev libxrandr-dev libgl1-mesa-dev libxi-dev libxcursor-dev libudev-dev libwayland-dev wayland-protocols libxkbcommon-dev libvulkan-dev --yes --quiet
-      - name: Install Vulkan SDK
-        if: matrix.graphics == 'vulkan'
-        run: sudo apt-get install vulkan-sdk
+          sudo apt-get update
+          sudo apt-get install libasound2-dev libxinerama-dev libxrandr-dev libgl1-mesa-dev libxi-dev libxcursor-dev libudev-dev libwayland-dev wayland-protocols libxkbcommon-dev libvulkan-dev --yes --quiet
 
       - run: |
-          cargo build -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}
+          cargo check -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}

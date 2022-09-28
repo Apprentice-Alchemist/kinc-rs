@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use kinc::{
     g4::{
         ClearMode, IndexBuffer, Pipeline, PipelineBuilder, VertexBuffer, VertexBufferDesc,
@@ -31,8 +33,8 @@ impl Callbacks for Shader {
     }
 }
 
-fn main() {
-    let (kinc, _) = kinc::KincBuilder::new("Kinc + Rust", 500, 500).build();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (kinc, _) = kinc::KincBuilder::new(&CString::new("Kinc + Rust")?, 500, 500).build();
 
     let vb = kinc::compile_shader!(
         vertex,
@@ -59,7 +61,7 @@ void main() {
     let vertex_shader = kinc::g4::Shader::new(vb, kinc::g4::ShaderType::Vertex);
     let fragment_shader = kinc::g4::Shader::new(fb, kinc::g4::ShaderType::Fragment);
     let vertex_structure = VertexStructureBuilder::new()
-        .add("pos", kinc::g4::VertexData::F32_3X)
+        .add(&CString::new("pos")?, kinc::g4::VertexData::F32_3X)
         .build();
     let pipeline = PipelineBuilder::new(
         &vertex_shader,
@@ -86,4 +88,5 @@ void main() {
         vertex_buffer,
         index_buffer,
     });
+    Ok(())
 }

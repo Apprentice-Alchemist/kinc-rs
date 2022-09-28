@@ -10,9 +10,12 @@
 			"name": "Cargo example",
 			"cargo": {
 				"args": [
+					"+nightly",
 					"build",
-					"--example",
-					"shader"
+					"-p",
+					"shader",
+					"--profile",
+					"dev"
 				]
 			},
 			"program": "${cargo:program}",

@@ -3,13 +3,10 @@
 #![warn(clippy::missing_safety_doc)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-extern crate alloc;
-
 pub mod g4;
 mod sys;
 
-use alloc::boxed::Box;
-use core::{borrow::BorrowMut, cell::RefCell};
+use core::{cell::UnsafeCell, ffi::CStr, mem::MaybeUninit, ptr::NonNull};
 use g4::Graphics4;
 
 pub use krafix::compile_shader as krafix_compile;
@@ -218,45 +215,43 @@ impl Into<kinc_framebuffer_options> for FramebufferOptions {
 
 static STATIC_DATA: StaticData = StaticData::new();
 
-#[derive(Default)]
 struct StaticData {
-    kinc: RefCell<Option<Box<Kinc>>>,
-    app: RefCell<Option<Box<dyn Callbacks>>>,
+    data: UnsafeCell<MaybeUninit<(Kinc, NonNull<dyn Callbacks>)>>,
 }
 
 impl StaticData {
     const fn new() -> Self {
         Self {
-            kinc: RefCell::new(None),
-            app: RefCell::new(None),
+            data: UnsafeCell::new(MaybeUninit::uninit()),
         }
     }
     /// # Safety
-    /// This function should be called from the same thread as [`StaticData::with()`] will be called from.
-    unsafe fn init(&'static self, data: Kinc, app: impl Callbacks + 'static) {
-        self.kinc.replace(Some(Box::new(data)));
-        self.app.replace(Some(Box::new(app)));
+    /// This function should be called on the same thread as `kinc_start`.
+    /// `app` should fullfill the necessary conditions for `NonNull::as_mut`
+    unsafe fn init(&self, data: Kinc, app: NonNull<dyn Callbacks>) {
+        // Safety: the pointer gotten from self.data is valid, and the mutable reference created is unique
+        (unsafe { &mut *self.data.get() }).write((data, app));
     }
 
     /// # Safety
-    /// This function must be called *after* `init` has been called
-    /// It should also always be called from the same thread.
+    /// This function must be called from a Kinc-invoked callback.
     unsafe fn with(&'static self, f: impl FnOnce(&mut Kinc, &mut (dyn Callbacks + 'static))) {
-        if let Some(kinc) = self.kinc.borrow_mut().as_mut() {
-            let mut app = self.app.borrow_mut();
-            if let Some(app) = app.as_mut() {
-                f(kinc, app.borrow_mut());
-            }
-        }
+        // Safety: Kinc callbacks are called from the same thread
+        // they are called after `Self::init` is called, thus the data is initialized 
+        let (kinc, app) = unsafe { (*self.data.get()).assume_init_mut() };
+        // Safety: the pointer is properly aligned since it is derived froma 
+        f(kinc, unsafe { app.as_mut() });
     }
 }
 
+// Safety: if the safety preconditions of the struct's methods are respected, the shared data will always be accessed from the same thread
 unsafe impl Sync for StaticData {}
 
 extern "C" fn _update_cb() {
     // Safety: the update callback will always be called from the main thread
     // The update callback won't be called before `kinc_start` has been called
     // which only happens after `STATIC_DATA.init` has been called.
+    // It also won't be called after `kinc_start` returns.
     unsafe {
         STATIC_DATA.with(|data, callbacks| {
             callbacks.update(data);
@@ -265,7 +260,7 @@ extern "C" fn _update_cb() {
 }
 
 pub struct KincBuilder<'a> {
-    name: &'a str,
+    name: &'a CStr,
     width: i32,
     height: i32,
     window_options: Option<WindowOptions<'a>>,
@@ -273,7 +268,7 @@ pub struct KincBuilder<'a> {
 }
 
 impl<'a> KincBuilder<'a> {
-    pub fn new(name: &'a str, width: i32, height: i32) -> Self {
+    pub fn new(name: &'a CStr, width: i32, height: i32) -> Self {
         Self {
             name,
             width,
@@ -294,13 +289,11 @@ impl<'a> KincBuilder<'a> {
     }
 
     pub fn build(self) -> (Kinc, Window) {
-        let mut name = alloc::vec![0u8; self.name.len() + 1];
-        name[..self.name.len()].copy_from_slice(self.name.as_bytes());
         // Safety: name is valid and lives long enough to be used in the kinc_init call
         // The window_options and framebuffer_options are either null or valid and live long enough to be used in the kinc_init call
         unsafe {
             kinc_init(
-                name.as_ptr().cast(),
+                self.name.as_ptr().cast(),
                 self.width,
                 self.height,
                 match self.window_options {
@@ -329,10 +322,11 @@ impl Kinc {
         Graphics4
     }
 
-    pub fn start(self, callbacks: impl Callbacks + 'static) {
-        // Safety: the update callbacks that use `STATIC_DATA` will always be called from the same thread as `kinc_start`.
+    pub fn start(self, mut callbacks: impl Callbacks + 'static) {
+        // Safety: the update callbacks that use `STATIC_DATA` will always be called from the same thread as `kinc_start`,
+        // and the callbacks will not be called after `kinc_start` returns, and thus will never get an invalid `callbacks` objects.
         unsafe {
-            STATIC_DATA.init(self, callbacks);
+            STATIC_DATA.init(self, NonNull::new_unchecked(&mut callbacks));
             kinc_set_update_callback(Some(_update_cb));
             kinc_start();
         }

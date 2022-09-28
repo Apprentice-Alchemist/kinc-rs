@@ -1,9 +1,8 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use std::fmt::Display;
-use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::{env, fs};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -79,6 +78,7 @@ impl Display for GraphicsApi {
 
 fn main() {
     println!("cargo:rerun-if-changed=kinc.h");
+    eprintln!("{:?}", std::env::vars());
 
     let mut include_paths = vec!["Kinc/Sources"];
     let mut defines = vec!["KINC_NO_MAIN", "KORE_LZ4X"];
@@ -270,6 +270,7 @@ fn main() {
             libs.push("framework=CoreMedia");
         }
         TargetOS::Android => {
+            defines.push("KORE_ANDROID");
             include_paths.push("Kinc/Backends/System/Android/Sources");
             add(
                 &mut files,
@@ -430,19 +431,62 @@ fn main() {
         }
     }
 
-    let bindings = bindgen::Builder::default()
-        .header("kinc.h")
-        .clang_args(
+    let bindings = {
+        let mut builder = bindgen::Builder::default().header("kinc.h").clang_args(
             include_paths
                 .iter()
                 .flat_map(|p| ["-I", p])
                 .chain(defines.iter().flat_map(|d| ["-D", d])),
-        )
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .use_core()
-        .ctypes_prefix("::core::ffi")
-        .generate()
-        .expect("Unable to generate bindings");
+        );
+        if target_os == TargetOS::Android {
+            builder = builder.clang_arg(&format!(
+                "--sysroot={}/toolchains/llvm/prebuilt/{}-{}/sysroot",
+                std::env::var("ANDROID_NDK_ROOT").unwrap(),
+                {
+                    #[cfg(windows)]
+                    {
+                        "windows"
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        "linux"
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        "darwin"
+                    }
+                    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+                    compile_error!("Unsupported host os for android compilation");
+                },
+                {
+                    #[cfg(target_arch = "x86_64")]
+                    {
+                        "x86_64"
+                    }
+                    #[cfg(target_arch = "x86")]
+                    {
+                        "x86"
+                    }
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        "aarch64"
+                    }
+                    #[cfg(not(any(
+                        target_arch = "x86_64",
+                        target_arch = "x86",
+                        target_arch = "aarch64"
+                    )))]
+                    compile_error!("Unsupported host architecture for android compilation");
+                }
+            ));
+        }
+        builder
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+            .use_core()
+            .ctypes_prefix("::core::ffi")
+            .generate()
+            .expect("Unable to generate bindings")
+    };
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
@@ -466,6 +510,46 @@ fn main() {
         } else {
             builder.define("KORE_ANDROID_API", "19");
         }
+        builder.flag_if_supported(&format!(
+            "--sysroot={}/toolchains/llvm/prebuilt/{}-{}/sysroot",
+            std::env::var("ANDROID_NDK_ROOT").unwrap(),
+            {
+                #[cfg(windows)]
+                {
+                    "windows"
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    "linux"
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    "darwin"
+                }
+                #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+                compile_error!("Unsupported host os for android compilation");
+            },
+            {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    "x86_64"
+                }
+                #[cfg(target_arch = "x86")]
+                {
+                    "x86"
+                }
+                #[cfg(target_arch = "aarch64")]
+                {
+                    "aarch64"
+                }
+                #[cfg(not(any(
+                    target_arch = "x86_64",
+                    target_arch = "x86",
+                    target_arch = "aarch64"
+                )))]
+                compile_error!("Unsupported host architecture for android compilation");
+            }
+        ));
     }
     builder.includes(include_paths);
     builder.extra_warnings(false);
