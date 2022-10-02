@@ -61,7 +61,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
+          sudo apt-get ugrade
           sudo apt-get install libasound2-dev libxinerama-dev libxrandr-dev libgl1-mesa-dev libxi-dev libxcursor-dev libudev-dev libwayland-dev wayland-protocols libxkbcommon-dev libvulkan-dev --yes --quiet
-
+      # - name: Get LunarG package list.
+      #   if: matrix.graphics == 'vulkan'
+      #   run: |
+      #     wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+      #     sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-bionic.list http://packages.lunarg.com/vulkan/lunarg-vulkan-bionic.list
+      # - name: Install Vulkan SDK
+      #   if: matrix.graphics == 'vulkan'
+      #   run: sudo apt-get install vulkan-sdk
       - run: |
           cargo check -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}

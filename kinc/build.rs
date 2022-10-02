@@ -152,6 +152,8 @@ fn main() {
                 "_CRT_SECURE_NO_WARNINGS",
                 "_WINSOCK_DEPRECATED_NO_WARNINGS",
                 "KINC_NO_DIRECTSHOW",
+                "_UNICODE",
+                "UNICODE"
             ]);
 
             add(
