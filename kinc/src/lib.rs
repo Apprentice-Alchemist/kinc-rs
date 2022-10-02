@@ -239,7 +239,7 @@ impl StaticData {
         // Safety: Kinc callbacks are called from the same thread
         // they are called after `Self::init` is called, thus the data is initialized 
         let (kinc, app) = unsafe { (*self.data.get()).assume_init_mut() };
-        // Safety: the pointer is properly aligned since it is derived froma 
+        // Safety: the pointer can be safely turned into a reference, since it is derived from a (still-valid) reference.
         f(kinc, unsafe { app.as_mut() });
     }
 }
@@ -248,10 +248,7 @@ impl StaticData {
 unsafe impl Sync for StaticData {}
 
 extern "C" fn _update_cb() {
-    // Safety: the update callback will always be called from the main thread
-    // The update callback won't be called before `kinc_start` has been called
-    // which only happens after `STATIC_DATA.init` has been called.
-    // It also won't be called after `kinc_start` returns.
+    // Safety: this is a Kinc-invoked callback
     unsafe {
         STATIC_DATA.with(|data, callbacks| {
             callbacks.update(data);
