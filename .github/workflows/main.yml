@@ -61,7 +61,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get ugrade
+          sudo apt-get upgrade
           sudo apt-get install libasound2-dev libxinerama-dev libxrandr-dev libgl1-mesa-dev libxi-dev libxcursor-dev libudev-dev libwayland-dev wayland-protocols libxkbcommon-dev libvulkan-dev --yes --quiet
       # - name: Get LunarG package list.
       #   if: matrix.graphics == 'vulkan'
