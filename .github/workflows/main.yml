@@ -56,18 +56,17 @@ jobs:
           git submodule update --init
           kinc/Kinc/get_dlc
           git -C krafix/krafix submodule update --init --depth 1
-
+      - name: Get LunarG package list.
+        if: matrix.graphics == 'vulkan'
+        run: |
+          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-bionic.list http://packages.lunarg.com/vulkan/lunarg-vulkan-bionic.list
       - name: Install Ubuntu packages
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get upgrade
           sudo apt-get install libasound2-dev libxinerama-dev libxrandr-dev libgl1-mesa-dev libxi-dev libxcursor-dev libudev-dev libwayland-dev wayland-protocols libxkbcommon-dev libvulkan-dev --yes --quiet
-      - name: Get LunarG package list.
-        if: matrix.graphics == 'vulkan'
-        run: |
-          wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-bionic.list http://packages.lunarg.com/vulkan/lunarg-vulkan-bionic.list
       - name: Install Vulkan SDK
         if: matrix.graphics == 'vulkan'
         run: sudo apt-get install vulkan-sdk
