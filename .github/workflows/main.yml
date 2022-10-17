@@ -2,6 +2,10 @@ name: Build
 
 on: [push]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     if: ${{ !contains(join(github.event.commits.*.message),'[skip ci]') }}
@@ -13,9 +17,9 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             graphics: metal
-          # - os: macos-latest
-          #   target: aarch64-apple-ios
-          #   graphics: metal
+          - os: macos-latest
+            target: aarch64-apple-ios
+            graphics: metal
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             graphics: d3d11
@@ -31,12 +35,12 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             graphics: vulkan
-          # - os: ubuntu-latest
-          #   target: aarch64-linux-android
-          #   graphics: opengl
-          # - os: ubuntu-latest
-          #   target: aarch64-linux-android
-          #   graphics: vulkan
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            graphics: opengl
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            graphics: vulkan
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -70,5 +74,6 @@ jobs:
       - name: Install Vulkan SDK
         if: matrix.graphics == 'vulkan'
         run: sudo apt-get install vulkan-sdk
-      - run: |
-          cargo check -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}
+      - name: Run cargo build
+        run: |
+          cargo build -p shader --features=kinc/${{ matrix.graphics }} --target=${{ matrix.target }}

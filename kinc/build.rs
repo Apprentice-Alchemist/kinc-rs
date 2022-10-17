@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::{env, fs};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -78,7 +78,6 @@ impl Display for GraphicsApi {
 
 fn main() {
     println!("cargo:rerun-if-changed=kinc.h");
-    eprintln!("{:?}", std::env::vars());
 
     let mut include_paths = vec!["Kinc/Sources"];
     let mut defines = vec!["KINC_NO_MAIN", "KORE_LZ4X"];
@@ -153,7 +152,7 @@ fn main() {
                 "_WINSOCK_DEPRECATED_NO_WARNINGS",
                 "KINC_NO_DIRECTSHOW",
                 "_UNICODE",
-                "UNICODE"
+                "UNICODE",
             ]);
 
             add(
@@ -278,6 +277,10 @@ fn main() {
                 &mut files,
                 "Kinc/Backends/System/Android/Sources/kinc/backend/androidunit.c",
             );
+            add(
+                &mut files,
+                "Kinc/Backends/System/Android/Sources/android_native_app_glue.c",
+            );
             libs.push("log");
             libs.push("android");
             libs.push("EGL");
@@ -344,6 +347,10 @@ fn main() {
             add(
                 &mut files,
                 "Kinc/Backends/Graphics4/OpenGL/Sources/kinc/backend/graphics4/openglunit.c",
+            );
+            add(
+                &mut files,
+                "Kinc/Backends/Graphics4/OpenGL/Sources/kinc/backend/compute.c",
             );
             match target_os {
                 TargetOS::Windows => {
@@ -440,6 +447,20 @@ fn main() {
                 .flat_map(|p| ["-I", p])
                 .chain(defines.iter().flat_map(|d| ["-D", d])),
         );
+        if target_os == TargetOS::IOS {
+            let mut cmd = Command::new("xcrun");
+            cmd.args(["--show-sdk-path", "--sdk", "iphoneos"]);
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+            let child = cmd
+                .spawn()
+                .expect("'xcrun --show-sdk-path --sdk iphoneos' failed");
+            let output = child.wait_with_output().unwrap();
+            match String::from_utf8(output.stdout) {
+                Ok(p) => builder = builder.clang_arg(format!("--sysroot={}", p.trim())),
+                Err(_) => panic!("xcrun returned invalid sdk path"),
+            }
+        }
         if target_os == TargetOS::Android {
             builder = builder.clang_arg(&format!(
                 "--sysroot={}/toolchains/llvm/prebuilt/{}-{}/sysroot",

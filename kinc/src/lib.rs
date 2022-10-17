@@ -237,7 +237,7 @@ impl StaticData {
     /// This function must be called from a Kinc-invoked callback.
     unsafe fn with(&'static self, f: impl FnOnce(&mut Kinc, &mut (dyn Callbacks + 'static))) {
         // Safety: Kinc callbacks are called from the same thread
-        // they are called after `Self::init` is called, thus the data is initialized 
+        // they are called after `Self::init` is called, thus the data is initialized
         let (kinc, app) = unsafe { (*self.data.get()).assume_init_mut() };
         // Safety: the pointer can be safely turned into a reference, since it is derived from a (still-valid) reference.
         f(kinc, unsafe { app.as_mut() });
@@ -338,4 +338,31 @@ impl Window {}
 
 pub trait Callbacks {
     fn update(&mut self, _kinc: &mut Kinc) {}
+}
+
+#[cfg(target_os = "android")]
+extern "Rust" {
+    fn rust_kickstart();
+}
+
+#[cfg(target_os = "android")]
+extern "C" {
+    fn kinc_internal_android_init(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8);
+}
+
+#[cfg(target_os = "android")]
+#[export_name = "ANativeActivity_onCreate"]
+extern "C" fn android_native_activity_on_create(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8) {
+    unsafe {
+        kinc_internal_android_init(na, savedState, savedStateSize);
+    }
+}
+
+
+#[cfg(target_os = "android")]
+#[export_name = "kickstart"]
+extern "C" fn kickstart(_argc: core::ffi::c_int, _argv: *mut *mut core::ffi::c_char) {
+    unsafe {
+        rust_kickstart()
+    }
 }
