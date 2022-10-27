@@ -33,6 +33,11 @@ impl Callbacks for Shader {
     }
 }
 
+#[cfg_attr(any(target_os = "android", target_os="ios"), export_name = "rust_kickstart")]
+pub fn rust_kickstart() {
+    main().unwrap();
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (kinc, _) = kinc::KincBuilder::new(&CString::new("Kinc + Rust")?, 500, 500).build();
 

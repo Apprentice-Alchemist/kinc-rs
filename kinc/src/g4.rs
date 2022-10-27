@@ -554,7 +554,7 @@ impl Shader {
                 shader.as_mut_ptr(),
                 // kinc_g4_shader_init will not mutate the source passed to it (hopefully).
                 code.as_ptr().cast::<c_void>() as *mut _,
-                code.len() as size_t,
+                code.len(),
                 t.into(),
             );
             Self {

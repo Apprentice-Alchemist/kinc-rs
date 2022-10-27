@@ -7,6 +7,7 @@ pub mod g4;
 mod sys;
 
 use core::{cell::UnsafeCell, ffi::CStr, mem::MaybeUninit, ptr::NonNull};
+// use std::process::Termination;
 use g4::Graphics4;
 
 pub use krafix::compile_shader as krafix_compile;
@@ -340,7 +341,7 @@ pub trait Callbacks {
     fn update(&mut self, _kinc: &mut Kinc) {}
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 extern "Rust" {
     fn rust_kickstart();
 }
@@ -359,7 +360,7 @@ extern "C" fn android_native_activity_on_create(na: *mut u8, savedState: *mut u8
 }
 
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 #[export_name = "kickstart"]
 extern "C" fn kickstart(_argc: core::ffi::c_int, _argv: *mut *mut core::ffi::c_char) {
     unsafe {

@@ -1,5 +1,6 @@
 #![allow(clippy::upper_case_acronyms)]
 
+use core::panic;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
