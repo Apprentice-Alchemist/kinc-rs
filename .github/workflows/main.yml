@@ -35,12 +35,12 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             graphics: vulkan
-          - os: ubuntu-latest
-            target: aarch64-linux-android
-            graphics: opengl
-          - os: ubuntu-latest
-            target: aarch64-linux-android
-            graphics: vulkan
+          # - os: ubuntu-latest
+          #   target: aarch64-linux-android
+          #   graphics: opengl
+          # - os: ubuntu-latest
+          #   target: aarch64-linux-android
+          #   graphics: vulkan
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -64,7 +64,7 @@ jobs:
         if: matrix.graphics == 'vulkan'
         run: |
           wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-focal-bionic.list http://packages.lunarg.com/vulkan/lunarg-focal-bionic.list
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list http://packages.lunarg.com/vulkan/lunarg-vulkan-focal.list
       - name: Install Ubuntu packages
         if: matrix.os == 'ubuntu-latest'
         run: |

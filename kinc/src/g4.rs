@@ -214,11 +214,11 @@ impl Into<kinc_g4_vertex_data_t> for VertexData {
     }
 }
 
-pub struct VertexStructureBuilder {
-    vertex_structure: VertexStructure,
+pub struct VertexStructureBuilder<'a> {
+    vertex_structure: VertexStructure<'a>,
 }
 
-impl Default for VertexStructureBuilder {
+impl<'a> Default for VertexStructureBuilder<'a> {
     fn default() -> Self {
         Self {
             vertex_structure: VertexStructure::new(),
@@ -226,12 +226,12 @@ impl Default for VertexStructureBuilder {
     }
 }
 
-impl VertexStructureBuilder {
+impl<'a> VertexStructureBuilder<'a> {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn add(mut self, name: &CStr, data: VertexData) -> Self {
+    pub fn add(mut self, name: &'a CStr, data: VertexData) -> Self {
         unsafe {
             kinc_g4_vertex_structure_add(
                 self.vertex_structure.vertex_structure.get_mut(),
@@ -247,17 +247,18 @@ impl VertexStructureBuilder {
         self
     }
 
-    pub fn build(self) -> VertexStructure {
+    pub fn build(self) -> VertexStructure<'a> {
         self.vertex_structure
     }
 }
 
 #[derive(Debug)]
-pub struct VertexStructure {
+pub struct VertexStructure<'a> {
     vertex_structure: UnsafeCell<kinc_g4_vertex_structure_t>,
+    _phantom: core::marker::PhantomData<&'a CStr>
 }
 
-impl VertexStructure {
+impl<'a> VertexStructure<'a> {
     fn new() -> Self {
         let struc = unsafe {
             let mut struc = MaybeUninit::zeroed();
@@ -266,6 +267,7 @@ impl VertexStructure {
         };
         Self {
             vertex_structure: UnsafeCell::new(struc),
+            _phantom: core::marker::PhantomData
         }
     }
 
@@ -274,25 +276,26 @@ impl VertexStructure {
     }
 }
 
-impl Clone for VertexStructure {
+impl Clone for VertexStructure<'_> {
     fn clone(&self) -> Self {
         unsafe {
             Self {
                 vertex_structure: UnsafeCell::new(*self.vertex_structure.get()),
+                _phantom: core::marker::PhantomData
             }
         }
     }
 }
 
-impl GetRaw<kinc_g4_vertex_structure> for VertexStructure {
+impl GetRaw<kinc_g4_vertex_structure> for VertexStructure<'_> {
     fn get_raw(&self) -> *mut kinc_g4_vertex_structure {
         self.vertex_structure.get()
     }
 }
 
-pub struct VertexBufferDesc {
+pub struct VertexBufferDesc<'a> {
     pub count: i32,
-    pub vertex_structure: VertexStructure,
+    pub vertex_structure: VertexStructure<'a>,
     pub usage: Usage,
     pub instance_data_step_rate: i32,
 }
@@ -339,7 +342,7 @@ impl<T> Drop for VertexLockResult<'_, T> {
 }
 
 impl VertexBuffer {
-    pub fn new(desc: VertexBufferDesc) -> Self {
+    pub fn new(desc: VertexBufferDesc<'_>) -> Self {
         // Safety: usage of zeroed() + the kinc init function should be sufficient to initialize the vertex buffer
         let vertex_buffer = unsafe {
             let mut vb: MaybeUninit<kinc_g4_vertex_buffer> = MaybeUninit::zeroed();
@@ -570,6 +573,15 @@ impl GetRaw<kinc_g4_shader_t> for Shader {
     }
 }
 
+impl Drop for Shader {
+    fn drop(&mut self) {
+        // Safety: self.get_raw is a valid pointer to an initialized shader object
+        unsafe {
+            kinc_g4_shader_destroy(self.get_raw())
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum RenderTargetFormat {
     I32,
@@ -747,6 +759,15 @@ impl GetRaw<kinc_g4_pipeline> for Pipeline {
     }
 }
 
+impl Drop for Pipeline {
+    fn drop(&mut self) {
+        // Safety: self.get_raw is a valid pointer to an initialized pipeline
+        unsafe {
+            kinc_g4_pipeline_destroy(self.get_raw())
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Stencil {
     pub mode: CompareMode,
@@ -796,7 +817,7 @@ pub struct PipelineBuilder<'a> {
     tessellation_control_shader: Option<&'a Shader>,
     tessellation_evaluation_shader: Option<&'a Shader>,
 
-    input_layout: &'a [VertexStructure],
+    input_layout: &'a [VertexStructure<'a>],
 
     cull_mode: CullMode,
     depth_mode: Option<CompareMode>,
@@ -994,6 +1015,10 @@ impl<'a> PipelineBuilder<'a> {
         unsafe {
             kinc_g4_pipeline_compile(&mut pipeline);
         }
+        // We extend the life time of self to ensure that it's data (eg the strings in the vertex structures)
+        // is still valid when calling kinc_g4_pipeline_compile
+        #[allow(clippy::drop_non_drop)]
+        drop(self);
 
         Pipeline {
             pipeline: UnsafeCell::new(pipeline),

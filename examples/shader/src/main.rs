@@ -34,11 +34,11 @@ impl Callbacks for Shader {
 }
 
 #[cfg_attr(any(target_os = "android", target_os="ios"), export_name = "rust_kickstart")]
-pub fn rust_kickstart() {
-    main().unwrap();
+pub fn main() {
+    real_main().unwrap();
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn real_main() -> Result<(), Box<dyn std::error::Error>> {
     let (kinc, _) = kinc::KincBuilder::new(&CString::new("Kinc + Rust")?, 500, 500).build();
 
     let vb = kinc::compile_shader!(
@@ -65,8 +65,9 @@ void main() {
 
     let vertex_shader = kinc::g4::Shader::new(vb, kinc::g4::ShaderType::Vertex);
     let fragment_shader = kinc::g4::Shader::new(fb, kinc::g4::ShaderType::Fragment);
+    let str = CString::new("pos")?;
     let vertex_structure = VertexStructureBuilder::new()
-        .add(&CString::new("pos")?, kinc::g4::VertexData::F32_3X)
+        .add(&str, kinc::g4::VertexData::F32_3X)
         .build();
     let pipeline = PipelineBuilder::new(
         &vertex_shader,
