@@ -346,18 +346,18 @@ extern "Rust" {
     fn rust_kickstart();
 }
 
-#[cfg(target_os = "android")]
-extern "C" {
-    fn kinc_internal_android_init(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8);
-}
+// #[cfg(target_os = "android")]
+// extern "C" {
+//     fn kinc_internal_android_init(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8);
+// }
 
-#[cfg(target_os = "android")]
-#[export_name = "ANativeActivity_onCreate"]
-extern "C" fn android_native_activity_on_create(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8) {
-    unsafe {
-        kinc_internal_android_init(na, savedState, savedStateSize);
-    }
-}
+// #[cfg(target_os = "android")]
+// #[export_name = "ANativeActivity_onCreate"]
+// extern "C" fn android_native_activity_on_create(na: *mut u8, savedState: *mut u8, savedStateSize: *mut u8) {
+//     unsafe {
+//         kinc_internal_android_init(na, savedState, savedStateSize);
+//     }
+// }
 
 
 #[cfg(any(target_os = "android", target_os = "ios"))]

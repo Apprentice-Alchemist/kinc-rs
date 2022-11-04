@@ -53,7 +53,7 @@ jobs:
           override: true
           components: clippy
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
 
       - name: Get submodules
         run: |
