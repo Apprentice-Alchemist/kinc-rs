@@ -359,11 +359,8 @@ extern "Rust" {
 //     }
 // }
 
-
 #[cfg(any(target_os = "android", target_os = "ios"))]
 #[export_name = "kickstart"]
 extern "C" fn kickstart(_argc: core::ffi::c_int, _argv: *mut *mut core::ffi::c_char) {
-    unsafe {
-        rust_kickstart()
-    }
+    unsafe { rust_kickstart() }
 }

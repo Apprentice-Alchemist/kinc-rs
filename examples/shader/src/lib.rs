@@ -33,7 +33,7 @@ impl Callbacks for Shader {
     }
 }
 
-#[cfg(any(target_os = "android", target_os="ios"))]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 #[export_name = "rust_kickstart"]
 pub fn rust_kickstart() {
     real_main().unwrap();

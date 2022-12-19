@@ -21,6 +21,15 @@ pub struct RenderPass<'a> {
 }
 
 impl<'a> RenderPass<'a> {
+    pub fn set_render_targets(&mut self, render_targets: &[&RenderTarget]) {
+        unsafe {
+            kinc_g4_set_render_targets(
+                render_targets.as_ptr().cast_mut().cast(),
+                render_targets.len().try_into().unwrap(),
+            )
+        }
+    }
+
     pub fn set_index_buffer(&mut self, index_buffer: &IndexBuffer) {
         // Safety: index_buffer is a valid index buffer.
         unsafe { kinc_g4_set_index_buffer(index_buffer.get_raw()) }
@@ -59,7 +68,11 @@ impl<'a> RenderPass<'a> {
         }
     }
 
-    pub fn end(self) {
+    pub fn end(self) {}
+}
+
+impl Drop for RenderPass<'_> {
+    fn drop(&mut self) {
         unsafe {
             kinc_g4_end(self.window.window);
         }
@@ -255,7 +268,7 @@ impl<'a> VertexStructureBuilder<'a> {
 #[derive(Debug)]
 pub struct VertexStructure<'a> {
     vertex_structure: UnsafeCell<kinc_g4_vertex_structure_t>,
-    _phantom: core::marker::PhantomData<&'a CStr>
+    _phantom: core::marker::PhantomData<&'a CStr>,
 }
 
 impl<'a> VertexStructure<'a> {
@@ -267,7 +280,7 @@ impl<'a> VertexStructure<'a> {
         };
         Self {
             vertex_structure: UnsafeCell::new(struc),
-            _phantom: core::marker::PhantomData
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -281,7 +294,7 @@ impl Clone for VertexStructure<'_> {
         unsafe {
             Self {
                 vertex_structure: UnsafeCell::new(*self.vertex_structure.get()),
-                _phantom: core::marker::PhantomData
+                _phantom: core::marker::PhantomData,
             }
         }
     }
@@ -576,9 +589,7 @@ impl GetRaw<kinc_g4_shader_t> for Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         // Safety: self.get_raw is a valid pointer to an initialized shader object
-        unsafe {
-            kinc_g4_shader_destroy(self.get_raw())
-        }
+        unsafe { kinc_g4_shader_destroy(self.get_raw()) }
     }
 }
 
@@ -762,9 +773,7 @@ impl GetRaw<kinc_g4_pipeline> for Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         // Safety: self.get_raw is a valid pointer to an initialized pipeline
-        unsafe {
-            kinc_g4_pipeline_destroy(self.get_raw())
-        }
+        unsafe { kinc_g4_pipeline_destroy(self.get_raw()) }
     }
 }
 
@@ -1023,6 +1032,24 @@ impl<'a> PipelineBuilder<'a> {
         Pipeline {
             pipeline: UnsafeCell::new(pipeline),
         }
+    }
+}
+
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct RenderTarget {
+    target: UnsafeCell<kinc_g4_render_target>,
+}
+
+impl GetRaw<kinc_g4_render_target> for RenderTarget {
+    fn get_raw(&self) -> *mut kinc_g4_render_target {
+        self.target.get()
+    }
+}
+
+impl Drop for RenderTarget {
+    fn drop(&mut self) {
+        unsafe { kinc_g4_render_target_destroy(self.get_raw()) }
     }
 }
 
