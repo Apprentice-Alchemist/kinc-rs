@@ -10,6 +10,8 @@ use core::{cell::UnsafeCell, ffi::CStr, mem::MaybeUninit, ptr::NonNull};
 // use std::process::Termination;
 use g4::Graphics4;
 
+extern crate krafix;
+
 pub use krafix::compile_shader as krafix_compile;
 
 #[cfg(all(feature = "opengl", any(target_os = "linux", target_os = "android")))]
@@ -248,7 +250,7 @@ impl StaticData {
 // Safety: if the safety preconditions of the struct's methods are respected, the shared data will always be accessed from the same thread
 unsafe impl Sync for StaticData {}
 
-extern "C" fn _update_cb() {
+extern "C" fn _update_cb(data: *mut core::ffi::c_void) {
     // Safety: this is a Kinc-invoked callback
     unsafe {
         STATIC_DATA.with(|data, callbacks| {
@@ -325,7 +327,7 @@ impl Kinc {
         // and the callbacks will not be called after `kinc_start` returns, and thus will never get an invalid `callbacks` objects.
         unsafe {
             STATIC_DATA.init(self, NonNull::new_unchecked(&mut callbacks));
-            kinc_set_update_callback(Some(_update_cb));
+            kinc_set_update_callback(Some(_update_cb), core::ptr::null_mut());
             kinc_start();
         }
     }

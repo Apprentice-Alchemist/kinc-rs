@@ -52,6 +52,8 @@ void main() {
 	gl_Position = vec4(pos.x, pos.y, 0.5, 1.0);
 }"
     );
+    let str = String::from_utf8((&vb).to_vec()).unwrap();
+    println!("{str}");
 
     let fb = kinc::compile_shader!(
         fragment,

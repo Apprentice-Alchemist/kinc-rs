@@ -26,6 +26,7 @@ extern "C" {
         targetlang: *const u8,
         system: *const u8,
         shadertype: *const u8,
+        shaderversion: i32,
     ) -> i32;
 }
 
@@ -71,6 +72,8 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         ShaderKind::Fragment => b"frag\0",
     };
 
+    let shaderversion = 300;
+
     let mut v = vec![0_u8; 1024 * 1024];
     let mut len: i32 = v.len() as i32;
 
@@ -82,6 +85,7 @@ pub fn compile_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
             targetlang.as_ptr().cast(),
             system.as_ptr(),
             shadertype.as_ptr(),
+            shaderversion
         ) != 0
         {
             panic!("Failed to compile shader");

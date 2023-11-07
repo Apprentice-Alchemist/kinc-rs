@@ -1,4 +1,6 @@
 {
-	"rust-analyzer.checkOnSave.command": "clippy",
-	"rust-analyzer.cargo.runBuildScripts": false
+	// "rust-analyzer.checkOnSave.command": "clippy",
+	"rust-analyzer.cargo.runBuildScripts": false,
+	// "rust-analyzer.diagnostics.enable": false,
+	// "rust-analyzer."
 }

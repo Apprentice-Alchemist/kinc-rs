@@ -21,6 +21,10 @@ fn main() {
         "krafix/glslang/glslang/Include",
         "krafix/glslang/OGLCompilersDLL",
         "krafix/SPIRV-Cross",
+        "krafix/SPIRV-Tools",
+        "krafix/SPIRV-Tools/include",
+        "krafix/SPIRV-Tools/generated",
+        "krafix/SPIRV-Headers/include",
     ];
     let defines = vec![
         "KRAFIX_LIBRARY",
@@ -80,6 +84,10 @@ fn main() {
         "glslang/OGLCompilersDLL/**",
         "glslang/SPIRV/**",
         "SPIRV-Cross/*",
+        "SPIRV-Tools/source/*",
+        "SPIRV-Tools/source/opt/*",
+        "SPIRV-Tools/source/util/*",
+        "SPIRV-Tools/source/val/*",
     ] {
         files(&format!("krafix/{}", pat));
     }

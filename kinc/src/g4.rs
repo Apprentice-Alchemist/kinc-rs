@@ -500,7 +500,7 @@ impl IndexBuffer {
     }
 
     pub fn lock<T: ValidIndexFormat>(&self) -> IndexLockResult<'_, T> {
-        let ptr = unsafe { kinc_g4_index_buffer_lock(self.get_raw()) };
+        let ptr = unsafe { kinc_g4_index_buffer_lock(self.get_raw(), 0, self.count()) };
         IndexLockResult {
             data: ptr.cast(),
             count: self.count(),
